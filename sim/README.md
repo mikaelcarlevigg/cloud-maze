@@ -4,6 +4,10 @@ Prova Cloud Maze på din egen dator. Du behöver inget AWS-konto och inga extra 
 
 Simuleringen bygger samma logik som konceptet i [huvud-README:n](../README.md): en tjänst vars väg flyttas, en kartjänst för behöriga, och snubbeltrådar som larmar när någon använder en gammal väg.
 
+## Bara en mobil?
+
+Öppna `web.html` i webbläsaren. Den kör samma logik direkt i sidan, och du spelar angripare med knappar.
+
 ## Kom igång
 
 Hämta repot och gå till mappen:
