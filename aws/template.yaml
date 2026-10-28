@@ -1,0 +1,499 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Cloud Maze phase 1. An API whose path rotates on a schedule, a map service
+  reachable only with IAM, and tripwires that e-mail you when someone uses an
+  old path or a decoy.
+
+Parameters:
+  AlarmEmail:
+    Type: String
+    Description: E-mail address for alarms. Confirm the subscription in the e-mail from AWS.
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  IntervalMinutes:
+    Type: Number
+    Description: Minutes between moves. A path lives for two intervals, the second one is the overlap.
+    Default: 2
+    AllowedValues: [2, 5, 10]
+  RunHours:
+    Type: Number
+    Description: After this many hours the maze shuts itself down and the API blocks every request.
+    Default: 2
+    AllowedValues: [1, 2, 4, 8]
+
+Resources:
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Cloud Maze
+
+  AlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+
+  # ---- The maze engine: moves the path on a schedule ----
+
+  RotatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: state
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Resource: !GetAtt StateTable.Arn
+              - Effect: Allow
+                Action: events:DisableRule
+                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/${AWS::StackName}-rotation"
+              - Effect: Allow
+                Action: apigateway:PATCH
+                Resource: !Sub "arn:aws:apigateway:${AWS::Region}::/apis/${HttpApi}/stages/*"
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref AlarmTopic
+
+  RotatorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-rotator"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 10
+      Role: !GetAtt RotatorRole.Arn
+      Environment:
+        Variables:
+          TABLE: !Ref StateTable
+          RUN_HOURS: !Sub "${RunHours}"
+          RULE: !Sub "${AWS::StackName}-rotation"
+          API_ID: !Ref HttpApi
+          TOPIC: !Ref AlarmTopic
+      Code:
+        ZipFile: |
+          # Each run: the previous path closes and becomes a tripwire, the
+          # current path becomes the previous one (still open, the overlap),
+          # and a new current path opens.
+          # After RUN_HOURS it shuts everything down instead, so nothing keeps
+          # running or costing money: the schedule stops and the API blocks
+          # every request.
+          import os, secrets, time
+          import boto3
+
+          table = boto3.resource("dynamodb").Table(os.environ["TABLE"])
+          KEY = {"pk": "orders-api"}
+          KEEP_CLOSED = 200
+
+          def new_id():
+              return secrets.token_hex(4)
+
+          def shut_down():
+              boto3.client("events").disable_rule(Name=os.environ["RULE"])
+              boto3.client("apigatewayv2").update_stage(
+                  ApiId=os.environ["API_ID"], StageName="$default",
+                  DefaultRouteSettings={"ThrottlingBurstLimit": 0, "ThrottlingRateLimit": 0})
+              boto3.client("sns").publish(
+                  TopicArn=os.environ["TOPIC"], Subject="Cloud Maze has shut itself down",
+                  Message="The maze has stopped moving and the API now rejects every request. "
+                          "Run ./destroy.sh in CloudShell to remove everything.")
+              print("shut down")
+
+          def handler(event, context):
+              now = int(time.time())
+              item = table.get_item(Key=KEY).get("Item")
+              if item and now - int(item["started"]) >= int(os.environ["RUN_HOURS"]) * 3600:
+                  shut_down()
+                  return {"shut_down": True}
+              if not item:
+                  item = {**KEY, "current": new_id(), "opened": now, "started": now, "closed": {},
+                          "decoys": [new_id() for _ in range(3)]}
+              else:
+                  closed = item.get("closed", {})
+                  if item.get("previous"):
+                      closed[item["previous"]] = {"o": item["prevOpened"], "c": now}
+                  for old in sorted(closed, key=lambda k: closed[k]["c"])[:-KEEP_CLOSED]:
+                      del closed[old]
+                  item.update(previous=item["current"], prevOpened=item["opened"],
+                              current=new_id(), opened=now, closed=closed)
+              table.put_item(Item=item)
+              print(f"current={item['current']} previous={item.get('previous')}")
+              return {"current": item["current"], "previous": item.get("previous")}
+
+  RotatorLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${RotatorFunction}"
+      RetentionInDays: 7
+
+  RotatorSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-rotation"
+      ScheduleExpression: !Sub "rate(${IntervalMinutes} minutes)"
+      Targets:
+        - Arn: !GetAtt RotatorFunction.Arn
+          Id: rotator
+
+  RotatorSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RotatorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt RotatorSchedule.Arn
+
+  # ---- The protected service behind the rotating path ----
+
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: state-and-alarms
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt StateTable.Arn
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref AlarmTopic
+
+  ServiceFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-service"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 10
+      Role: !GetAtt ServiceRole.Arn
+      Environment:
+        Variables:
+          TABLE: !Ref StateTable
+          TOPIC: !Ref AlarmTopic
+      Code:
+        ZipFile: |
+          # Open paths get the orders. Closed paths and decoys get a plausible
+          # empty answer, and an alarm goes out by e-mail. Anything else is 404.
+          import json, os
+          from datetime import datetime, timezone
+          import boto3
+
+          table = boto3.resource("dynamodb").Table(os.environ["TABLE"])
+          sns = boto3.client("sns")
+          ORDERS = [
+              {"id": "A-1001", "customer": "Nordvind AB", "amount_sek": 12400},
+              {"id": "A-1002", "customer": "Fjallkraft AB", "amount_sek": 3150},
+          ]
+
+          def answer(status, body):
+              return {"statusCode": status, "headers": {"content-type": "application/json"},
+                      "body": json.dumps(body)}
+
+          def utc(ts):
+              return datetime.fromtimestamp(int(ts), timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+          def handler(event, context):
+              path = (event.get("pathParameters") or {}).get("path", "")
+              item = table.get_item(Key={"pk": "orders-api"}).get("Item") or {}
+              if path and path in (item.get("current"), item.get("previous")):
+                  return answer(200, {"orders": ORDERS})
+              closed = item.get("closed", {})
+              if path in closed or path in item.get("decoys", []):
+                  http = event.get("requestContext", {}).get("http", {})
+                  kind = "old_path" if path in closed else "decoy"
+                  lines = [f"Path: /v1/{path}/orders",
+                           f"From: {http.get('sourceIp', '?')}",
+                           f"User-Agent: {http.get('userAgent', '?')}"]
+                  if kind == "old_path":
+                      w = closed[path]
+                      lines.append(f"This path only existed {utc(w['o'])} to {utc(w['c'])}. "
+                                   "The information leaked in that window.")
+                      subject = "Cloud Maze: stale path used"
+                  else:
+                      lines.append("This path was never on any map. It only exists as a planted decoy.")
+                      subject = "Cloud Maze: decoy used"
+                  print(json.dumps({"tripwire": kind, "path": path, "source": http.get("sourceIp")}))
+                  sns.publish(TopicArn=os.environ["TOPIC"], Subject=subject, Message="\n".join(lines))
+                  return answer(200, {"orders": []})
+              return answer(404, {"error": "not found"})
+
+  ServiceLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ServiceFunction}"
+      RetentionInDays: 7
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-api"
+      ProtocolType: HTTP
+
+  ServiceIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ServiceFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  OrdersRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /v1/{path}/orders"
+      Target: !Sub "integrations/${ServiceIntegration}"
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 5
+        ThrottlingRateLimit: 2
+
+  ServiceApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ServiceFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*"
+
+  # ---- The map service: reachable only with IAM (aws lambda invoke) ----
+
+  MapRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: state
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt StateTable.Arn
+
+  MapFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-map"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 10
+      Role: !GetAtt MapRole.Arn
+      Environment:
+        Variables:
+          TABLE: !Ref StateTable
+          API: !GetAtt HttpApi.ApiEndpoint
+          INTERVAL: !Sub "${IntervalMinutes}"
+      Code:
+        ZipFile: |
+          # The map for authorized clients: where the service is right now, and
+          # when to fetch a new map (shortly after the next move).
+          import os, time
+          import boto3
+
+          table = boto3.resource("dynamodb").Table(os.environ["TABLE"])
+
+          def handler(event, context):
+              item = table.get_item(Key={"pk": "orders-api"}).get("Item")
+              if not item:
+                  raise RuntimeError("the maze has not started yet")
+              interval = int(os.environ["INTERVAL"]) * 60
+              next_move = int(item["opened"]) + interval
+              return {
+                  "service": "orders-api",
+                  "path": item["current"],
+                  "url": f"{os.environ['API']}/v1/{item['current']}/orders",
+                  "refresh_at": next_move + 15,
+                  "valid_until": next_move + interval,
+                  "now": int(time.time()),
+              }
+
+  MapLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${MapFunction}"
+      RetentionInDays: 7
+
+  # ---- The control panel: lets you test from a phone browser, no typing ----
+  # Its address contains the stack's unique id, so only you know it. It plays
+  # the authorized client (it reads the map) and lists old paths and a decoy
+  # you can tap to play the attacker.
+
+  PanelRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: state
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt StateTable.Arn
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt RotatorFunction.Arn
+
+  PanelFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-panel"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 15
+      Role: !GetAtt PanelRole.Arn
+      Environment:
+        Variables:
+          TABLE: !Ref StateTable
+          API: !GetAtt HttpApi.ApiEndpoint
+          INTERVAL: !Sub "${IntervalMinutes}"
+          TOKEN: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+          ROTATOR: !Ref RotatorFunction
+      Code:
+        ZipFile: |
+          import html, os, time
+          from datetime import datetime, timezone
+          import boto3
+
+          table = boto3.resource("dynamodb").Table(os.environ["TABLE"])
+          API = os.environ["API"]
+
+          def hm(ts):
+              return datetime.fromtimestamp(int(ts), timezone.utc).strftime("%H:%M:%S")
+
+          def link(path, text):
+              url = html.escape(f"{API}/v1/{path}/orders")
+              return f'<a href="{url}">{html.escape(text)}</a>'
+
+          def handler(event, context):
+              token = (event.get("pathParameters") or {}).get("token")
+              if token != os.environ["TOKEN"]:
+                  return {"statusCode": 404, "body": "not found"}
+              item = table.get_item(Key={"pk": "orders-api"}).get("Item")
+              if not item:
+                  boto3.client("lambda").invoke(FunctionName=os.environ["ROTATOR"])
+                  item = table.get_item(Key={"pk": "orders-api"}).get("Item")
+              now = int(time.time())
+              left = int(item["opened"]) + int(os.environ["INTERVAL"]) * 60 - now
+              cur = item["current"]
+              closed = sorted(item.get("closed", {}).items(), key=lambda kv: -kv[1]["c"])[:5]
+              old = "".join(
+                  f"<li>{link(p, p)}<br><small>fanns {hm(w['o'])} till {hm(w['c'])} UTC</small></li>"
+                  for p, w in closed) or "<li>Inga &auml;n. Den f&ouml;rsta st&auml;ngs om n&aring;gra minuter.</li>"
+              body = f"""<!doctype html><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <meta http-equiv="refresh" content="15"><title>Cloud Maze</title>
+          <style>body{{font:16px/1.5 system-ui,sans-serif;max-width:560px;margin:0 auto;padding:16px}}
+          code,a{{font-family:ui-monospace,monospace;word-break:break-all}}
+          section{{border:1px solid #ccd;border-radius:10px;padding:12px;margin:12px 0}}
+          h2{{font-size:15px;margin:0 0 6px}}small{{color:#667}}</style>
+          <h1>Cloud Maze</h1>
+          <p>Uppdateras var 15:e sekund. Klockan &auml;r {hm(now)} UTC.</p>
+          <section><h2>Beh&ouml;rig klient</h2>
+          <p>Kartan s&auml;ger: {link(cur, "/v1/" + cur + "/orders")}</p>
+          <p>N&auml;sta flytt om cirka {max(0, left)} sekunder. Tryck p&aring; l&auml;nken: du f&aring;r ordrarna.</p></section>
+          <section><h2>Du &auml;r angriparen: gamla v&auml;gar</h2>
+          <p>De h&auml;r v&auml;garna har st&auml;ngts. Tryck p&aring; en: du f&aring;r ett tomt svar och ett larm i din e-post.</p>
+          <ul>{old}</ul></section>
+          <section><h2>Lockbete</h2>
+          <p>En v&auml;g fr&aring;n en l&auml;ckt konfigfil. Den har aldrig funnits p&aring; n&aring;gon karta.</p>
+          <p>{link(item["decoys"][0], item["decoys"][0])}</p></section>
+          <p><small>Ta bort allt: CloudFormation, v&auml;lj stacken, Delete.</small></p>"""
+              return {"statusCode": 200, "headers": {"content-type": "text/html; charset=utf-8"},
+                      "body": body}
+
+  PanelLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${PanelFunction}"
+      RetentionInDays: 7
+
+  PanelIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt PanelFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  PanelRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /panel/{token}"
+      Target: !Sub "integrations/${PanelIntegration}"
+
+  PanelApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PanelFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*"
+
+Outputs:
+  PanelUrl:
+    Description: Open this link on your phone to test
+    Value: !Sub
+      - "${Endpoint}/panel/${Token}"
+      - Endpoint: !GetAtt HttpApi.ApiEndpoint
+        Token: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+  ApiEndpoint:
+    Value: !GetAtt HttpApi.ApiEndpoint
+  MapFunction:
+    Value: !Ref MapFunction
+  RotatorFunction:
+    Value: !Ref RotatorFunction
+  StateTable:
+    Value: !Ref StateTable
