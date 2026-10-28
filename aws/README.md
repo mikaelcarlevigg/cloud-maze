@@ -14,15 +14,14 @@ Allt installeras i ditt eget konto, och bara du får API-adressen. Vill någon a
 | Kartjänsten | Lambda (`map`) | Ger aktuell väg. Den nås bara med din IAM-identitet, aldrig från internet. |
 | Larmen | SNS | Mejlar dig när någon använder en gammal väg eller ett lockbete, med tidsfönstret som visar när vägen läckte |
 | Kontrollpanelen | API Gateway och Lambda (`panel`) | En webbsida för mobilen med hemlig adress. Visar aktuell väg, gamla vägar och ett lockbete som du trycker på för att testa. |
-| Budgetlarm | AWS Budgets | Mejlar dig om kontots kostnad når halva månadsbudgeten |
 
 ## Kostnad och säkerhetsspärrar
 
-Inget ska dra pengar i det tysta. Därför finns fyra spärrar:
+Inget ska dra pengar i det tysta. Därför finns de här spärrarna:
 
 1. **Labyrinten stänger av sig själv efter 2 timmar.** Motorn slutar flytta vägen, API:et börjar avvisa alla anrop, och du får ett mejl om det.
 2. **API:et är strypt till 2 anrop per sekund.** Även om någon skulle hitta adressen och hamra på den kan det inte bli många anrop.
-3. **Budgetlarm.** Du får ett mejl om kontots kostnad når 0,50 USD under månaden. Budgetlarm uppdateras några gånger per dygn, så det fungerar som ett skyddsnät, inte som en spärr.
+3. **Budgetlarm, som du lägger till själv.** Det går inte att skapa från mallen i alla regioner. Gå till **Billing and Cost Management**, välj **Budgets**, tryck **Create budget** och välj mallen **Zero spend budget**. Fyll i din e-post och tryck **Create budget**. Du får då ett mejl så fort kontot kostar något alls. Budgetlarm uppdateras några gånger per dygn, så det fungerar som ett skyddsnät, inte som en spärr.
 4. **`./destroy.sh` tar bort allt.** Kör det när du är klar.
 
 Alla delar betalas per användning, och en testrunda gör bara några hundra anrop. Kostnaden blir därför i praktiken noll. Lambda och API Gateway har dessutom gratisnivåer. När du skapar ett nytt AWS-konto kan du få välja en gratisplan med startkrediter, där kontot inte debiteras alls. Kontrollera vad som gäller när du registrerar dig.
@@ -136,7 +135,7 @@ Föredrar du kommandon framför menyn finns skripten `deploy.sh`, `client.sh`, `
 ./deploy.sh din@epost.se 5     # flytta vägen var 5:e minut i stället för varannan
 ```
 
-Hur länge labyrinten körs (`RunHours`) och månadsbudgeten (`BudgetUsd`) ställer du in i `template.yaml`. Labyrinten startar inte om av sig själv efter att den har stängts av. Kör `./destroy.sh` och sedan `./deploy.sh` igen.
+Hur länge labyrinten körs (`RunHours`) väljer du när du skapar stacken, eller i `template.yaml`. Labyrinten startar inte om av sig själv efter att den har stängts av. Kör `./destroy.sh` och sedan `./deploy.sh` igen.
 
 ## Skillnader mot konceptet
 

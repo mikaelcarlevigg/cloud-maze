@@ -1,28 +1,24 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Cloud Maze, fas 1. Ett API vars sökväg roterar på schema, en kartjänst som bara
-  nås med IAM, och snubbeltrådar som skickar e-post när någon använder en gammal
-  väg eller ett lockbete.
+  Cloud Maze phase 1. An API whose path rotates on a schedule, a map service
+  reachable only with IAM, and tripwires that e-mail you when someone uses an
+  old path or a decoy.
 
 Parameters:
   AlarmEmail:
     Type: String
-    Description: E-postadress som får larmen. Du måste bekräfta prenumerationen i mejlet från AWS.
+    Description: E-mail address for alarms. Confirm the subscription in the e-mail from AWS.
     AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
   IntervalMinutes:
     Type: Number
-    Description: Minuter mellan varje flytt. En väg lever i två intervall, varav ett är överlapp.
+    Description: Minutes between moves. A path lives for two intervals, the second one is the overlap.
     Default: 2
     AllowedValues: [2, 5, 10]
   RunHours:
     Type: Number
-    Description: Efter så här många timmar stänger labyrinten av sig själv och API:et blockeras.
+    Description: After this many hours the maze shuts itself down and the API blocks every request.
     Default: 2
     AllowedValues: [1, 2, 4, 8]
-  BudgetUsd:
-    Type: Number
-    Description: Månadsbudget i USD. Du får ett mejl om kontots kostnad når halva beloppet.
-    Default: 1
 
 Resources:
   StateTable:
@@ -434,7 +430,7 @@ Resources:
               closed = sorted(item.get("closed", {}).items(), key=lambda kv: -kv[1]["c"])[:5]
               old = "".join(
                   f"<li>{link(p, p)}<br><small>fanns {hm(w['o'])} till {hm(w['c'])} UTC</small></li>"
-                  for p, w in closed) or "<li>Inga än. Den första stängs om några minuter.</li>"
+                  for p, w in closed) or "<li>Inga &auml;n. Den f&ouml;rsta st&auml;ngs om n&aring;gra minuter.</li>"
               body = f"""<!doctype html><meta charset="utf-8">
           <meta name="viewport" content="width=device-width,initial-scale=1">
           <meta http-equiv="refresh" content="15"><title>Cloud Maze</title>
@@ -443,17 +439,17 @@ Resources:
           section{{border:1px solid #ccd;border-radius:10px;padding:12px;margin:12px 0}}
           h2{{font-size:15px;margin:0 0 6px}}small{{color:#667}}</style>
           <h1>Cloud Maze</h1>
-          <p>Uppdateras var 15:e sekund. Klockan är {hm(now)} UTC.</p>
-          <section><h2>Behörig klient</h2>
-          <p>Kartan säger: {link(cur, "/v1/" + cur + "/orders")}</p>
-          <p>Nästa flytt om cirka {max(0, left)} sekunder. Tryck på länken: du får ordrarna.</p></section>
-          <section><h2>Du är angriparen: gamla vägar</h2>
-          <p>De här vägarna har stängts. Tryck på en: du får ett tomt svar och ett larm i din e-post.</p>
+          <p>Uppdateras var 15:e sekund. Klockan &auml;r {hm(now)} UTC.</p>
+          <section><h2>Beh&ouml;rig klient</h2>
+          <p>Kartan s&auml;ger: {link(cur, "/v1/" + cur + "/orders")}</p>
+          <p>N&auml;sta flytt om cirka {max(0, left)} sekunder. Tryck p&aring; l&auml;nken: du f&aring;r ordrarna.</p></section>
+          <section><h2>Du &auml;r angriparen: gamla v&auml;gar</h2>
+          <p>De h&auml;r v&auml;garna har st&auml;ngts. Tryck p&aring; en: du f&aring;r ett tomt svar och ett larm i din e-post.</p>
           <ul>{old}</ul></section>
           <section><h2>Lockbete</h2>
-          <p>En väg från en läckt konfigfil. Den har aldrig funnits på någon karta.</p>
+          <p>En v&auml;g fr&aring;n en l&auml;ckt konfigfil. Den har aldrig funnits p&aring; n&aring;gon karta.</p>
           <p>{link(item["decoys"][0], item["decoys"][0])}</p></section>
-          <p><small>Ta bort allt: CloudFormation, välj stacken, Delete.</small></p>"""
+          <p><small>Ta bort allt: CloudFormation, v&auml;lj stacken, Delete.</small></p>"""
               return {"statusCode": 200, "headers": {"content-type": "text/html; charset=utf-8"},
                       "body": body}
 
@@ -486,31 +482,9 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*"
 
-  # ---- Safety net: an e-mail if the account's costs start to rise ----
-
-  CostBudget:
-    Type: AWS::Budgets::Budget
-    Properties:
-      Budget:
-        BudgetName: !Sub "${AWS::StackName}-budget"
-        BudgetType: COST
-        TimeUnit: MONTHLY
-        BudgetLimit:
-          Amount: !Ref BudgetUsd
-          Unit: USD
-      NotificationsWithSubscribers:
-        - Notification:
-            NotificationType: ACTUAL
-            ComparisonOperator: GREATER_THAN
-            Threshold: 50
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - SubscriptionType: EMAIL
-              Address: !Ref AlarmEmail
-
 Outputs:
   PanelUrl:
-    Description: Öppna den här länken i mobilen för att testa
+    Description: Open this link on your phone to test
     Value: !Sub
       - "${Endpoint}/panel/${Token}"
       - Endpoint: !GetAtt HttpApi.ApiEndpoint
