@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Spela angripare.
+#   ./attacker.sh steal    Stjäl vägen som gäller nu, som om den hade läckt i en logg
+#   ./attacker.sh attack   Angriper med den stulna vägen
+#   ./attacker.sh decoy    Provar en väg från en läckt konfigfil (ett planterat lockbete)
+#   ./attacker.sh guess    Gissar en väg
+set -euo pipefail
+cd "$(dirname "$0")"
+source .cloudmaze.env
+
+STOLEN=.stolen-url
+
+state() {
+  aws dynamodb get-item --table-name "$TABLE" --key '{"pk":{"S":"orders-api"}}' \
+    --query "$1" --output text
+}
+
+hit() {
+  echo "GET $1"
+  curl -s -w '\n-> svar %{http_code}\n' "$1"
+}
+
+case "${1:-}" in
+  steal)
+    url="$API/v1/$(state Item.current.S)/orders"
+    echo "$url" > "$STOLEN"
+    echo "Du har stulit: $url"
+    echo
+    hit "$url"
+    echo
+    echo "Vägen fungerar nu. Vänta minst två flyttar (4-5 minuter med standardinställningen)"
+    echo "och kör sedan:  ./attacker.sh attack"
+    echo "Du kan också öppna adressen i mobilens webbläsare senare."
+    ;;
+  attack)
+    [ -f "$STOLEN" ] || { echo "Stjäl en väg först: ./attacker.sh steal"; exit 1; }
+    hit "$(cat "$STOLEN")"
+    echo
+    echo "Fick du \"orders\": [] är vägen stängd. Svaret ser normalt ut, men ett larm har"
+    echo "skickats till din e-post. Fick du ordrar är vägen fortfarande öppen, vänta lite till."
+    ;;
+  decoy)
+    hit "$API/v1/$(state 'Item.decoys.L[0].S')/orders"
+    echo
+    echo "Den här vägen har aldrig funnits på någon karta. Kolla din e-post."
+    ;;
+  guess)
+    hit "$API/v1/$(python3 -c 'import secrets; print(secrets.token_hex(4))')/orders"
+    echo
+    echo "En gissning ger bara 404 och inget larm."
+    ;;
+  *)
+    sed -n '2,6p' attacker.sh | sed 's/^# \{0,1\}//'
+    exit 1
+    ;;
+esac
