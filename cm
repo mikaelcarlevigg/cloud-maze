@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Kort väg till menyn, så att det går att skriva på en mobil:  cloud-maze/cm
+exec "$(dirname "$0")/aws/meny.sh" "$@"

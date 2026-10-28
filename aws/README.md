@@ -38,64 +38,51 @@ Gå till https://aws.amazon.com och välj att skapa ett konto. Du behöver en e-
 2. Välj region uppe till höger, till exempel **Europe (Stockholm)**.
 3. Sök efter **CloudShell** i sökfältet högst upp och öppna det. Första gången tar det någon minut att starta.
 
-Kommandona nedan kopierar du och klistrar in i CloudShell. På mobilen håller du fingret i terminalfönstret och väljer *Klistra in*.
+Det går ofta inte att klistra in i CloudShell på en mobil. Därför behöver du bara skriva två korta rader. Resten sköter du med siffror i en meny.
 
-### 3. Installera
+### 3. Hämta koden och starta menyn
 
-Byt ut e-postadressen mot din egen:
-
-```bash
-git clone -b claude/cloud-maze-concept-xvvzwy https://github.com/mikaelcarlevigg/cloud-maze.git
-cd cloud-maze/aws
-./deploy.sh din@epost.se
-```
-
-Installationen tar ett par minuter. När den är klar:
-
-**Öppna mejlet från AWS Notifications och tryck på *Confirm subscription*.** Annars kommer inga larm fram.
-
-### 4. Starta den behöriga klienten
+Skriv de här två raderna och tryck Enter efter var och en:
 
 ```bash
-./client.sh
+git clone https://github.com/mikaelcarlevigg/cloud-maze
+cloud-maze/cm
 ```
 
-Klienten hämtar kartan med din IAM-identitet och anropar tjänsten var tionde sekund i sex minuter. Du ser hur den byter väg varannan minut utan att något anrop misslyckas.
+`git clone` hämtar koden från `main`. Om pull requesten med Cloud Maze inte är inslagen än, lägg till grenens namn: `git clone -b claude/cloud-maze-concept-xvvzwy https://github.com/mikaelcarlevigg/cloud-maze`.
 
-### 5. Spela angripare
+Menyn ser ut så här:
 
-När klienten är klar, eller i en ny flik (plustecknet i CloudShell):
+```
+========== Cloud Maze ==========
+Status: inte installerad
 
-```bash
-./attacker.sh steal
+  1  Installera
+  2  Kör behörig klient (6 min)
+  3  Angripare: stjäl vägen som gäller nu
+  4  Angripare: angrip med stulen väg
+  5  Angripare: prova lockbete
+  6  Angripare: gissa en väg
+  7  Ta bort allt
+  0  Avsluta menyn
 ```
 
-Du har nu stulit vägen som gäller just nu, som om den hade läckt i en logg. Den fungerar, du får ordrarna.
+Kommer du tillbaka senare, eller har CloudShell startats om, skriver du bara `cloud-maze/cm` igen.
 
-**Vänta 4–5 minuter**, så att vägen hinner stängas, och angrip sedan:
+### 4. Testa
 
-```bash
-./attacker.sh attack
-```
+1. **Välj 1** och skriv din e-postadress. Installationen tar ett par minuter.
+2. **Öppna mejlet från AWS Notifications och tryck på *Confirm subscription*.** Annars kommer inga larm fram.
+3. **Välj 2.** Den behöriga klienten hämtar kartan med din IAM-identitet och anropar tjänsten var tionde sekund i sex minuter. Du ser hur den byter väg varannan minut utan att något anrop misslyckas.
+4. **Välj 3.** Du stjäl vägen som gäller just nu, som om den hade läckt i en logg. Den fungerar, du får ordrarna.
+5. **Vänta 4–5 minuter.** Menyn visar *STÄNGD* när den stulna vägen har stängts.
+6. **Välj 4.** Svaret ser normalt ut men innehåller inga ordrar. Kolla din e-post: där ligger ett larm som talar om vilken väg som användes, varifrån anropet kom, och mellan vilka klockslag vägen fanns. Det är där läckan skedde.
+7. **Välj 5 och 6.** Ett lockbete larmar på samma sätt. En gissad väg ger bara 404 och inget larm.
+8. **Välj 7** när du är klar. Det tar bort allt som installerades.
 
-Svaret ser normalt ut men innehåller inga ordrar. Kolla din e-post: där ligger ett larm som talar om vilken väg som användes, varifrån anropet kom, och mellan vilka klockslag vägen fanns. Det är där läckan skedde.
+Du kan också öppna den stulna adressen i mobilens webbläsare. Den skrivs ut när du väljer 3.
 
-Prova också:
-
-```bash
-./attacker.sh decoy    # en väg från en "läckt konfigfil", som aldrig har funnits på någon karta
-./attacker.sh guess    # en gissad väg: 404 och inget larm
-```
-
-Du kan också öppna den stulna adressen i mobilens webbläsare. Den skrivs ut när du kör `steal`.
-
-### 6. Ta bort allt
-
-```bash
-./destroy.sh
-```
-
-Tar bort allt som installerades. Om CloudShell har startats om sedan dess, gå först till mappen igen med `cd ~/cloud-maze/aws`.
+Föredrar du kommandon framför menyn finns skripten `deploy.sh`, `client.sh`, `attacker.sh` och `destroy.sh` i samma mapp.
 
 ## Inställningar
 
