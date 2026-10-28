@@ -65,11 +65,16 @@
   .stat.bad b { color: var(--alarm); }
   .stat.good b { color: var(--ok); }
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  /* Fixed height, so a label that changes length does not resize its row. */
+  .actions button { min-height: 66px; }
   button {
     font: 600 14px var(--sans); color: var(--ink); background: var(--bg); border: 1px solid var(--line);
     border-radius: 10px; padding: 11px 10px; cursor: pointer; text-align: left; min-height: 48px;
   }
+  button:active:not(:disabled) { background: var(--line); }
+  /* The highlighted button is the suggested next step, not a selection. */
   button.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+  button.primary:active:not(:disabled) { background: var(--accent); opacity: 0.85; }
   button:disabled { opacity: 0.45; cursor: default; }
   button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .answer { font: 13px var(--mono); background: var(--bg); border-radius: 8px; padding: 8px 10px; word-break: break-word; color: var(--muted); }
@@ -111,7 +116,7 @@
   <section aria-labelledby="hAttack">
     <h2 id="hAttack">You are the attacker</h2>
     <div class="actions">
-      <button class="primary" id="aSteal">Steal the current path</button>
+      <button id="aSteal">Steal the current path</button>
       <button id="aUse" disabled>Attack with the stolen path</button>
       <button id="aDecoy">Try a path from a leaked config</button>
       <button id="aMap">Fetch the map without keys</button>
@@ -207,7 +212,7 @@
 
   // ---- Alarms (Lambda decoys reporting to Security Hub) ----
   const alarms = [];
-  let stolen = null, stolenOrders = 0;
+  let stolen = null, stolenOrders = 0, attacked = false;
   const fmt = s => `${s.toFixed(1)} s`;
 
   function alarm(kind, id, t) {
@@ -246,12 +251,16 @@
   }
 
   $('aSteal').onclick = () => {
-    stolen = maze.current.id; $('aUse').disabled = false;
+    stolen = maze.current.id; attacked = false; $('aUse').disabled = false;
     $('aUse').textContent = `Attack with ${stolen}`;
     answer(`You have stolen /v1/${stolen}/orders, say from a leaked log. It works now, but for how long?`);
     render();
   };
-  $('aUse').onclick = () => stolen && attack(stolen);
+  $('aUse').onclick = () => {
+    if (!stolen) return;
+    if (status(stolen) === 'closed') attacked = true;
+    attack(stolen);
+  };
   $('aDecoy').onclick = () => attack(maze.decoys[0]);
   $('aGuess').onclick = () => attack(hex());
   $('aMap').onclick = () => { alarm('map', 'map', now()); answer('GET /map → 401 unauthorized. The map requires the client\'s key.'); };
@@ -294,6 +303,10 @@
 
     $('cCalls').textContent = client.calls; $('cOk').textContent = client.ok; $('cFail').textContent = client.fail;
     $('cFail').parentElement.className = client.fail ? 'stat bad' : 'stat';
+
+    // Highlight the next step: steal a path, then attack once it has closed.
+    const nextStep = !stolen ? 'aSteal' : (status(stolen) === 'closed' && !attacked ? 'aUse' : null);
+    for (const id of ['aSteal', 'aUse']) $(id).classList.toggle('primary', id === nextStep);
   }
 
   function loop() {
