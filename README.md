@@ -239,18 +239,81 @@ Cloud Maze should be seen as a layer *on top of* ordinary security, not a replac
 
 ## 9. What already exists
 
-Cloud Maze builds on known ideas. What is new is how they are combined.
+Cloud Maze builds on known ideas, and several of them are available as products or open-source projects. What is new is how they are combined. This overview is based on public information from October 2026; check each project's current status yourself.
 
-| Existing idea | What it does | How Cloud Maze differs |
+### Moving target defense
+
+| Project | Type | What it does | How Cloud Maze differs |
+| --- | --- | --- | --- |
+| [Hopr](https://www.businesswire.com/news/home/20230418005347/en/Hopr-to-Display-Novel-Moving-Target-Defense-Technology-at-RSA-2023) | Commercial, on AWS Marketplace | Rotates workload credentials at high frequency and protects APIs with encrypted tunnels | Rotates credentials, not the address of the API, and has no tripwires on old paths |
+| [Morphisec](https://external.pi.gpi.aws.gartner.com/reviews/vendor/morphisec) | Commercial | Moving target defense for endpoints and servers: changes memory and program behavior so malware cannot find its way | Protects the machine, not the routes to cloud services |
+| [ADA](https://arxiv.org/abs/2505.23805v1) | Research | Rotates AI workloads at the Kubernetes pod level | Rotates the workload, not the address clients use, and has no map or tripwires |
+
+### Cloud deception
+
+| Project | Type | What it does | How Cloud Maze differs |
+| --- | --- | --- | --- |
+| [Tracebit](https://thenextweb.com/news/tracebit-20m-series-a-cloud-deception-security) | Commercial | Decoys and canaries across AWS, Azure, Google Cloud, CI/CD and Kubernetes | Decoys stand next to the real system. In Cloud Maze the real system itself moves, and its old addresses become the decoys. |
+| [Praetorian Knossos](https://portal.praetorian.com/changelog/knossos-procedurally-generated-decoy-environments-that-turn-attackers-into-intelligence) | Commercial | Procedurally generated decoy environments that turn attackers into intelligence | Closest in spirit to the shadow world, but separate from the real service. Cloud Maze sends attackers there when they use a stale path. |
+| [Acalvio](https://yespress.io/acalvio-technologies), [Fidelis](https://fidelissecurity.com/threatgeek/cloud-security/using-deception-technology-in-cloud-environments/), [CounterCraft](https://www.countercraftsec.com/blog/cloud-security-through-deception/) | Commercial | Decoy resources, fake accounts and honeytokens in the cloud | Broad deception platforms. Cloud Maze is narrow: one API, a moving address and a map. |
+
+### Canary tokens and fake AWS keys
+
+| Project | Type | What it does | How Cloud Maze differs |
+| --- | --- | --- | --- |
+| [Thinkst Canarytokens](https://docs.canarytokens.org/guide/aws-keys-token) | Free hosted service, open source, and a paid version | Fake AWS keys and many other tokens that alert you when they are used | Complements Cloud Maze, see below |
+| [GitGuardian ggcanary](https://blog.gitguardian.com/press-release-canary-tokens/) | Open source (Terraform) | Thousands of fake AWS keys in your own account, alerting through CloudTrail | Complements Cloud Maze, see below |
+| [Atlassian SPACECRAB](https://blog.gitguardian.com/from-vulnerability-to-advantage-turn-exposed-secrets-into-your-best-allies-to-detect-intrusion/) | Open source, older | Deploys thousands of AWS honey tokens | Complements Cloud Maze, see below |
+
+### LLM-driven honeypots
+
+| Project | Type | What it does | How Cloud Maze differs |
+| --- | --- | --- | --- |
+| [Galah](https://github.com/LubyRuffy/galah) | Open source | A web honeypot where an LLM writes fake HTTP responses | Stand-alone. In Cloud Maze, attackers reach the fake world through the tripwires of a moving maze. |
+| [Beelzebub](https://ramnode.com/guides/beelzebub) | Open source | An LLM-driven honeypot for SSH and HTTP | Same as above |
+| [shelLM](https://ar5iv.labs.arxiv.org/html/2309.00155), [GPTHoney](https://isc.sans.edu/diary/31342) | Research and open source | Fake shells and file systems written by an LLM | Imitate a server. Cloud Maze imitates an API. |
+
+### Other related ideas
+
+| Idea | What it does | How Cloud Maze differs |
 | --- | --- | --- |
-| **Moving target defense** in research and in endpoint and server products | Changes memory layout and program behavior so malware cannot find its way | Protects the machine, not the routes to cloud services |
 | **Zero trust**, such as AWS Verified Access and Cloudflare Access | Checks identity on every request | The door stays put. Cloud Maze moves the door and can be combined with zero trust. |
 | **Port knocking** and Single Packet Authorization | Opens a port only after a secret signal | A static secret pattern. Cloud Maze rotates everything and alarms on old patterns. |
-| **Honeypots and canary tokens** | Decoys that alarm on contact | Stand-alone. In Cloud Maze every closed path automatically becomes a decoy. |
-| **LLM-driven honeypots** | Generate convincing fake systems and answers | Stand-alone deception. In Cloud Maze it is fed by the tripwires of a moving maze. |
 | **Key rotation** in Secrets Manager | Replaces secrets on a schedule | Only one wall of three, with no map or tripwires |
 
-What is unique about Cloud Maze is the combination: coordinated rotation of address, route and key, the guarantee that the authorized always have a way in, and the fact that every old path automatically becomes a tripwire that traces leaks back in time and sends the attacker into a shadow world.
+### What is unique
+
+None of the projects above combines these four things:
+
+1. **The address of a real API moves**, while authorized clients follow along through a map.
+2. **Every old address automatically becomes a tripwire.** No one has to plant decoys by hand.
+3. **The alarm shows when the information leaked**, because each address only existed for a known period.
+4. **An attacker who uses a stale address ends up in a shadow world** of fake data, while the real service stays reachable for everyone else.
+
+### Working together with canary AWS keys
+
+Cloud Maze does not try to replace canary token tools. They catch something Cloud Maze cannot see on its own: a leaked AWS key used anywhere in AWS, from any machine. The two work well together.
+
+**1. Hand out a canary key in the shadow world.**
+An attacker in the shadow world believes they have found real data. If that data includes a canary AWS key, for example in a fake configuration object, the attacker is likely to try it. The canary then fires even if the attacker has switched IP address, machine or tool, perhaps days later. That follows the attacker beyond the shadow world, which recognizes sources only by IP address.
+
+**2. Plant decoy paths and canary keys together.**
+Put a Cloud Maze decoy path and a canary key in the same planted file, such as a configuration file in a repository or a CI variable. Whichever the attacker tries first, you learn that the file has leaked, and two independent alarms make it hard to dismiss as a coincidence.
+
+**3. Send both alarms to the same place.**
+Use the same e-mail address for Cloud Maze and the canary tool, or route both to the same Slack channel, so related alarms end up side by side.
+
+**Which canary tool to choose:**
+
+| Tool | Setup | Good to know |
+| --- | --- | --- |
+| [Canarytokens.org](https://docs.canarytokens.org/guide/aws-keys-token) | A form in the browser, works from a phone | Free. The key is a real AWS user without permissions in Thinkst's account. Alerts can take 2 to 30 minutes, because they go through AWS's logging. |
+| [ggcanary](https://blog.gitguardian.com/press-release-canary-tokens/) | Terraform from a computer | Open source, in your own AWS account, alerts through CloudTrail by e-mail or Slack. Suits many keys at once. |
+| Thinkst Canary (paid) | Managed service | From the makers of Canarytokens, for organizations that want support and central management. |
+
+A canary key has no permissions, so it is safe to hand out. Never use a real key, and never give a canary key permissions.
+
+The first idea, a canary key in the shadow world, is not built into Cloud Maze yet. It would be an optional field in the stack where you paste a key from Canarytokens.org.
 
 ## 10. How to tell it works
 
@@ -301,3 +364,7 @@ Packaged installation through AWS CloudFormation or CDK, an overview of the maze
 | **Half-life** | How long information about the system stays useful to an attacker |
 | **mTLS** | Mutual TLS, where both client and server present certificates |
 | **SigV4** | AWS's way of signing requests with an IAM identity |
+
+## License
+
+Cloud Maze is released under the [MIT License](LICENSE).
