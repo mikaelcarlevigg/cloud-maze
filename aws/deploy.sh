@@ -14,11 +14,19 @@ REGION="$(aws_region)"
 echo "Installerar stacken $STACK i konto $AWS_ACCOUNT_ID, region $REGION."
 read -rp "Stämmer det? Skriv j för att fortsätta: " yes
 [ "$yes" = "j" ] || { echo "Avbrutet."; exit 1; }
+# Optional LLM, any OpenAI-compatible API:
+#   LLM_BASE_URL=https://api.groq.com/openai/v1 LLM_MODEL=llama-3.3-70b-versatile ./deploy.sh din@epost.se
+PARAMS=("AlarmEmail=$EMAIL" "IntervalMinutes=$INTERVAL")
+if [ -n "${LLM_BASE_URL:-}" ]; then
+  [ -n "${LLM_API_KEY:-}" ] || read -rsp "API-nyckel för LLM:en (syns inte när du skriver): " LLM_API_KEY; echo
+  PARAMS+=("LlmBaseUrl=$LLM_BASE_URL" "LlmModel=${LLM_MODEL:?Ange LLM_MODEL}" "LlmApiKey=$LLM_API_KEY")
+fi
+
 aws cloudformation deploy \
   --stack-name "$STACK" \
   --template-file template.yaml \
   --capabilities CAPABILITY_IAM \
-  --parameter-overrides "AlarmEmail=$EMAIL" "IntervalMinutes=$INTERVAL"
+  --parameter-overrides "${PARAMS[@]}"
 
 output() {
   aws cloudformation describe-stacks --stack-name "$STACK" \

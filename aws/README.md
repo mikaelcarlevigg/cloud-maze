@@ -10,9 +10,11 @@ Allt installeras i ditt eget konto, och bara du får API-adressen. Vill någon a
 | --- | --- | --- |
 | Labyrintmotorn | EventBridge och Lambda (`rotator`) | Flyttar tjänstens väg varannan minut. En väg lever i två intervall, varav det sista är överlapp. |
 | Labyrintens tillstånd | DynamoDB | Aktuell väg, föregående väg, stängda vägar och lockbeten |
-| Tjänsten | API Gateway och Lambda (`service`) | `GET /v1/<väg>/orders`. Öppen väg ger ordrar. Stängd väg eller lockbete ger ett tomt svar och ett larm. |
+| Tjänsten | API Gateway och Lambda (`service`) | `GET /v1/<väg>/orders`. Öppen väg ger de riktiga ordrarna. En stängd väg eller ett lockbete är en snubbeltråd: källan hamnar i skuggvärlden och svaret innehåller falska ordrar. Annat ger 404. |
+| Skuggvärlden | DynamoDB och `service` | En källa som har gått i en snubbeltråd får falska ordrar på alla vägar, även den riktiga, i 30 minuter. Behöriga klienter märker ingenting. |
+| Analytikern | Lambda (`analyst`) | Skickar larmmejlet. Med en LLM påkopplad får mejlet en bedömning, och skuggvärlden får falska ordrar som LLM:en har skrivit. |
 | Kartjänsten | Lambda (`map`) | Ger aktuell väg. Den nås bara med din IAM-identitet, aldrig från internet. |
-| Larmen | SNS | Mejlar dig när någon använder en gammal väg eller ett lockbete, med tidsfönstret som visar när vägen läckte |
+| Larmen | SNS | Mejlar dig när en källa går i en snubbeltråd, med tidsfönstret som visar när vägen läckte. Ett mejl per källa, inte per anrop. |
 | Kontrollpanelen | API Gateway och Lambda (`panel`) | En webbsida för mobilen med hemlig adress. Visar aktuell väg, gamla vägar och ett lockbete som du trycker på för att testa. |
 
 ## Kostnad och säkerhetsspärrar
@@ -61,11 +63,12 @@ Filen hamnar i mappen Hämtade filer.
 
 Gå till fliken **Outputs** på stacken och tryck på länken vid **PanelUrl**. Spara gärna sidan som bokmärke. Adressen innehåller stackens unika id, så bara du hittar den.
 
-Panelen uppdateras var 15:e sekund och har tre delar:
+Panelen uppdateras var 15:e sekund och har fyra delar:
 
 - **Behörig klient:** visar vägen som kartan anger just nu. Tryck på den: du får ordrarna. Vänta två minuter och se att vägen har bytts.
-- **Gamla vägar:** när den första vägen har stängts, efter cirka fyra minuter, dyker den upp här. Tryck på den: svaret ser normalt ut men är tomt, och du får ett larmmejl. Mejlet visar mellan vilka klockslag vägen fanns, alltså när den läckte.
-- **Lockbete:** en väg som aldrig har funnits på någon karta. Tryck på den och kolla mejlen.
+- **Gamla vägar:** när den första vägen har stängts, efter cirka fyra minuter, dyker den upp här. Tryck på den: svaret ser äkta ut, men ordrarna kommer från andra kunder än Nordvind AB och är falska. Du får ett larmmejl som visar mellan vilka klockslag vägen fanns, alltså när den läckte.
+- **Lockbete:** en väg som aldrig har funnits på någon karta. Den fungerar som en gammal väg.
+- **Skuggvärlden:** när du har tryckt på en gammal väg eller ett lockbete står din IP-adress här, och panelen visar det överst. Tryck då på den behöriga vägen igen: nu får även den falska ordrar. Det är så en angripare upplever det. Efter 30 minuter släpps du ut.
 
 Gå tillbaka till panelen med webbläsarens bakåtknapp.
 
@@ -127,6 +130,46 @@ Du kan också öppna den stulna adressen i mobilens webbläsare. Den skrivs ut n
 
 Föredrar du kommandon framför menyn finns skripten `deploy.sh`, `client.sh`, `attacker.sh` och `destroy.sh` i samma mapp.
 
+## Koppla på en LLM
+
+Cloud Maze fungerar utan LLM. Om du kopplar på en gör den två saker:
+
+1. **Bedömer larmet.** Larmmejlet får en kort analys på svenska: vad som hände, hur allvarligt det är och vad du bör göra.
+2. **Skriver skuggvärlden.** Den skapar trovärdiga falska ordrar som angripare i skuggvärlden får se.
+
+Du kan använda vilken leverantör som helst som har ett OpenAI-kompatibelt API, vilket de flesta har. Du fyller i tre fält när du skapar stacken:
+
+| Fält | Groq | Annan leverantör |
+| --- | --- | --- |
+| **LlmBaseUrl** | `https://api.groq.com/openai/v1` | Leverantörens OpenAI-kompatibla adress, till exempel `https://api.openai.com/v1` eller `https://api.mistral.ai/v1` |
+| **LlmModel** | `llama-3.3-70b-versatile` | Ett modellnamn från leverantörens lista |
+| **LlmApiKey** | Din nyckel från Groq | Din nyckel från leverantören |
+
+Lämnar du fälten tomma körs allt utan LLM, och mejlen innehåller bara fakta.
+
+Installerar du med `deploy.sh` i CloudShell anger du adress och modell framför kommandot. Skriptet frågar sedan efter nyckeln:
+
+```bash
+LLM_BASE_URL=https://api.groq.com/openai/v1 LLM_MODEL=llama-3.3-70b-versatile ./deploy.sh din@epost.se
+```
+
+### Så får du en nyckel från Groq
+
+1. Logga in på https://console.groq.com.
+2. Välj **API Keys** och **Create API Key**.
+3. Kopiera nyckeln och klistra in den i fältet **LlmApiKey** när du skapar stacken. Formulär i webbläsaren går bra att klistra in i, till skillnad från CloudShell.
+
+Kontrollera också att modellnamnet finns i Groqs modellista, eftersom utbudet ändras.
+
+### Säkerhet och kostnad
+
+- **LLM:en bestämmer ingenting.** Den har inga verktyg och kan inte öppna vägar, stänga av larm eller släppa ut någon ur skuggvärlden. Fakta i mejlet, som väg, IP-adress och tidsfönster, kommer alltid från koden. LLM:ens text läggs till under.
+- **Angriparens data är bara data.** Sådant som angriparen styr, till exempel user-agent, skickas till LLM:en med en tydlig instruktion om att det är data och inte instruktioner. Även om någon lyckas lura modellen kan det bara påverka texten i mejlet.
+- **De falska ordrarna kontrolleras.** Bara fält med rätt typ och rimliga värden sparas. Allt annat kastas.
+- **Tak för antal anrop.** Högst 20 LLM-anrop per timme (`LlmMaxCallsPerHour`). LLM:en anropas bara när en ny källa går i en snubbeltråd, inte vid varje anrop.
+- **Om LLM:en inte svarar** går mejlet ut ändå, med en rad om felet.
+- **Nyckeln** döljs i CloudFormation-formuläret men sparas som miljövariabel på funktionen `analyst`. Den syns för den som har administratörsåtkomst till ditt konto. För produktion bör nyckeln ligga i AWS Secrets Manager. Det kostar en liten summa varje månad, och därför är det inte förvalt här.
+
 ## Egna inloggningsuppgifter
 
 Allt installeras i det AWS-konto du är inloggad i. Hur du loggar in beror på var du kör:
@@ -167,4 +210,5 @@ Fas 1 visar kärnan: vägen flyttas med överlapp, behöriga hittar rätt via ka
 - **Kartan är inte signerad.** IAM skyddar den, men KMS-signering ingår inte än.
 - **Bara adressen flyttas.** Nycklar och tillåtna källadresser roterar inte.
 - **Tjänsten saknar egen inloggning.** I verkligheten är Cloud Maze ett lager ovanpå vanlig autentisering.
-- **Larmen kan bli många.** Varje träff på en snubbeltråd ger ett mejl. Strypningen håller nere antalet, men en riktig version skulle samla larmen i Security Hub.
+- **Larmen går som mejl.** En riktig version skulle samla dem i Security Hub.
+- **Skuggvärlden känner igen källor på IP-adress.** Flera användare bakom samma IP-adress, till exempel på ett kontor eller i CloudShell, hamnar där tillsammans.

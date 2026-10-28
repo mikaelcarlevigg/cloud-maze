@@ -43,8 +43,9 @@ case "${1:-}" in
     [ -f "$STOLEN" ] || { echo "Stjäl en väg först: ./attacker.sh steal"; exit 1; }
     hit "$(cat "$STOLEN")"
     echo
-    echo "Fick du \"orders\": [] är vägen stängd. Svaret ser normalt ut, men ett larm har"
-    echo "skickats till din e-post. Fick du ordrar är vägen fortfarande öppen, vänta lite till."
+    echo "Kommer ordrarna från Nordvind AB och Fjallkraft AB är vägen fortfarande öppen. Vänta lite till."
+    echo "Andra kunder betyder att vägen är stängd: ordrarna är falska, din IP-adress är i"
+    echo "skuggvärlden och ett larm har skickats till din e-post."
     ;;
   decoy)
     hit "$API/v1/$(state 'Item.decoys.L[0].S')/orders"

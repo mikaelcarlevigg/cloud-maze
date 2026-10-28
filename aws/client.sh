@@ -33,9 +33,11 @@ while [ "$(date +%s)" -lt "$end" ]; do
   if [ "$(date +%s)" -ge "$refresh_at" ]; then fetch_map; fi
   body=$(curl -s -w '\n%{http_code}' "$url")
   code=$(tail -n1 <<<"$body")
-  count=$(head -n1 <<<"$body" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("orders", [])))' 2>/dev/null || echo 0)
   note=""
-  [ -n "$last" ] && [ "$url" != "$last" ] && note="  <- ny väg från kartan"
+  count=$(head -n1 <<<"$body" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("orders", [])))' 2>/dev/null || echo 0)
+  # The real orders are from Nordvind AB. Anything else means this IP address is in the shadow world.
+  grep -q "Nordvind AB" <<<"$body" || [ "$count" = 0 ] || note="  <- FALSKA ordrar: din IP-adress är i skuggvärlden"
+  [ -n "$last" ] && [ "$url" != "$last" ] && note="  <- ny väg från kartan$note"
   if [ "$code" = "200" ] && [ "$count" -gt 0 ]; then
     ok=$((ok + 1)); echo "$(date +%H:%M:%S)  OK   $url  ($count ordrar)$note"
   else
