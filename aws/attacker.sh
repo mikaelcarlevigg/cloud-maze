@@ -7,6 +7,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 source .cloudmaze.env
+source credentials.sh
+if [ -n "${REGION:-}" ]; then export AWS_REGION="$REGION"; fi
+ensure_aws_credentials || exit 1
+if [ -n "${ACCOUNT:-}" ] && [ "$AWS_ACCOUNT_ID" != "$ACCOUNT" ]; then
+  echo "Du är inloggad i konto $AWS_ACCOUNT_ID, men Cloud Maze är installerat i $ACCOUNT."
+  exit 1
+fi
 
 STOLEN=.stolen-url
 

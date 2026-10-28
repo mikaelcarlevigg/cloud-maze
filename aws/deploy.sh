@@ -7,7 +7,13 @@ EMAIL="${1:?Ange din e-postadress: ./deploy.sh din@epost.se}"
 INTERVAL="${2:-2}"
 STACK="${STACK:-cloud-maze}"
 
-echo "Installerar stacken $STACK i region $(aws configure get region || echo "${AWS_REGION:-okänd}") ..."
+source credentials.sh
+ensure_aws_credentials || exit 1
+REGION="$(aws_region)"
+
+echo "Installerar stacken $STACK i konto $AWS_ACCOUNT_ID, region $REGION."
+read -rp "Stämmer det? Skriv j för att fortsätta: " yes
+[ "$yes" = "j" ] || { echo "Avbrutet."; exit 1; }
 aws cloudformation deploy \
   --stack-name "$STACK" \
   --template-file template.yaml \
@@ -24,6 +30,8 @@ aws lambda invoke --function-name "$(output RotatorFunction)" /tmp/cloudmaze-rot
 
 cat > .cloudmaze.env <<ENV
 STACK=$STACK
+REGION=$REGION
+ACCOUNT=$AWS_ACCOUNT_ID
 API=$(output ApiEndpoint)
 MAP_FUNCTION=$(output MapFunction)
 TABLE=$(output StateTable)
