@@ -4,6 +4,8 @@
 
 Cloud Maze är ett koncept för *moving target defense* (rörligt försvar) byggt på AWS. Tjänster som exponeras mot internet, som API:er, administrativa gränssnitt och partnerintegrationer, flyttar regelbundet sina adresser, sina vägar och sina nycklar. Den som är behörig får en aktuell karta och märker ingenting. Den som har kartlagt systemet utifrån sitter plötsligt med en karta som inte stämmer längre. Om angriparen ändå försöker följa den gamla kartan går ett larm.
 
+**Vill du prova?** Det finns en lokal simulering i [`sim/`](sim/README.md) som du kör med `python3 demo.py`. Den kräver inget AWS-konto.
+
 ---
 
 ## Innehåll
