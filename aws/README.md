@@ -1,6 +1,6 @@
 # Cloud Maze i AWS, fas 1
 
-Den här versionen körs på riktigt i ett AWS-konto. Du kan installera och testa den med bara en mobil, eftersom allt görs i AWS CloudShell, ett terminalfönster som finns inbyggt i AWS-konsolen i webbläsaren.
+Den här versionen körs på riktigt i ett AWS-konto. Du kan installera och testa den med bara en mobil, utan att skriva några kommandon.
 
 Allt installeras i ditt eget konto, och bara du får API-adressen. Vill någon annan prova installerar de i sitt eget AWS-konto på samma sätt.
 
@@ -13,6 +13,7 @@ Allt installeras i ditt eget konto, och bara du får API-adressen. Vill någon a
 | Tjänsten | API Gateway och Lambda (`service`) | `GET /v1/<väg>/orders`. Öppen väg ger ordrar. Stängd väg eller lockbete ger ett tomt svar och ett larm. |
 | Kartjänsten | Lambda (`map`) | Ger aktuell väg. Den nås bara med din IAM-identitet, aldrig från internet. |
 | Larmen | SNS | Mejlar dig när någon använder en gammal väg eller ett lockbete, med tidsfönstret som visar när vägen läckte |
+| Kontrollpanelen | API Gateway och Lambda (`panel`) | En webbsida för mobilen med hemlig adress. Visar aktuell väg, gamla vägar och ett lockbete som du trycker på för att testa. |
 | Budgetlarm | AWS Budgets | Mejlar dig om kontots kostnad når halva månadsbudgeten |
 
 ## Kostnad och säkerhetsspärrar
@@ -26,13 +27,58 @@ Inget ska dra pengar i det tysta. Därför finns fyra spärrar:
 
 Alla delar betalas per användning, och en testrunda gör bara några hundra anrop. Kostnaden blir därför i praktiken noll. Lambda och API Gateway har dessutom gratisnivåer. När du skapar ett nytt AWS-konto kan du få välja en gratisplan med startkrediter, där kontot inte debiteras alls. Kontrollera vad som gäller när du registrerar dig.
 
-## Installera från mobilen
+## Installera från mobilen utan att skriva kommandon
+
+Allt görs med knappar i AWS-konsolen. Det enda du skriver är ett stacknamn och din e-postadress.
 
 ### 1. Skapa ett AWS-konto
 
 Gå till https://aws.amazon.com och välj att skapa ett konto. Du behöver en e-postadress, ett betalkort och telefonen för verifiering. Välj gratisplanen om du får frågan.
 
-### 2. Öppna CloudShell
+### 2. Ladda ner mallen till mobilen
+
+Håll fingret på den här länken och välj **Ladda ned länkad fil**:
+
+https://github.com/mikaelcarlevigg/cloud-maze/raw/claude/cloud-maze-concept-xvvzwy/aws/template.yaml
+
+Filen hamnar i mappen Hämtade filer.
+
+### 3. Installera med CloudFormation
+
+1. Logga in på https://console.aws.amazon.com och välj region uppe till höger, till exempel **Europe (Stockholm)**.
+2. Öppna tjänsten **CloudFormation** (sök på "cloud" i sökfältet).
+3. Tryck **Create stack** och välj **With new resources**.
+4. Välj **Upload a template file**, tryck **Choose file** och välj `template.yaml` från Hämtade filer. Tryck **Next**.
+5. Skriv `cm` som **Stack name** och din e-postadress under **AlarmEmail**. Låt resten vara. Tryck **Next**.
+6. Tryck **Next** igen på nästa sida.
+7. Längst ner: kryssa i rutan **I acknowledge that AWS CloudFormation might create IAM resources** och tryck **Submit**.
+8. Vänta tills stacken visar **CREATE_COMPLETE**. Det tar 2–3 minuter. Dra ner för att uppdatera.
+
+### 4. Bekräfta larmen
+
+Öppna mejlet från AWS Notifications och tryck på **Confirm subscription**. Annars kommer inga larm fram.
+
+### 5. Testa i kontrollpanelen
+
+Gå till fliken **Outputs** på stacken och tryck på länken vid **PanelUrl**. Spara gärna sidan som bokmärke. Adressen innehåller stackens unika id, så bara du hittar den.
+
+Panelen uppdateras var 15:e sekund och har tre delar:
+
+- **Behörig klient:** visar vägen som kartan anger just nu. Tryck på den: du får ordrarna. Vänta två minuter och se att vägen har bytts.
+- **Gamla vägar:** när den första vägen har stängts, efter cirka fyra minuter, dyker den upp här. Tryck på den: svaret ser normalt ut men är tomt, och du får ett larmmejl. Mejlet visar mellan vilka klockslag vägen fanns, alltså när den läckte.
+- **Lockbete:** en väg som aldrig har funnits på någon karta. Tryck på den och kolla mejlen.
+
+Gå tillbaka till panelen med webbläsarens bakåtknapp.
+
+### 6. Ta bort allt
+
+I CloudFormation: välj stacken `cm` och tryck **Delete**. Allt som installerades tas bort.
+
+## Installera med kommandon i CloudShell
+
+Föredrar du kommandon kan du installera från AWS CloudShell, terminalfönstret i AWS-konsolen. Då får du också en behörig klient och angriparskript som körs i terminalen.
+
+### Öppna CloudShell
 
 1. Logga in på https://console.aws.amazon.com.
 2. Välj region uppe till höger, till exempel **Europe (Stockholm)**.
@@ -40,7 +86,7 @@ Gå till https://aws.amazon.com och välj att skapa ett konto. Du behöver en e-
 
 Det går ofta inte att klistra in i CloudShell på en mobil. Därför behöver du bara skriva två korta rader. Resten sköter du med siffror i en meny.
 
-### 3. Hämta koden och starta menyn
+### Hämta koden och starta menyn
 
 Skriv de här två raderna och tryck Enter efter var och en:
 
@@ -69,7 +115,7 @@ Status: inte installerad
 
 Kommer du tillbaka senare, eller har CloudShell startats om, skriver du bara `cloud-maze/cm` igen.
 
-### 4. Testa
+### Testa från menyn
 
 1. **Välj 1** och skriv din e-postadress. Installationen tar ett par minuter.
 2. **Öppna mejlet från AWS Notifications och tryck på *Confirm subscription*.** Annars kommer inga larm fram.

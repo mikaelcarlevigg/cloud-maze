@@ -32,6 +32,8 @@ ENV
 echo
 echo "Klart. Labyrinten är igång och vägen flyttas var $INTERVAL:e minut."
 echo
+echo "Kontrollpanel för mobilen: $(output PanelUrl)"
+echo
 echo "1. Öppna mejlet från AWS Notifications och tryck på 'Confirm subscription'."
 echo "   Annars kommer inga larm fram."
 echo "2. Starta den behöriga klienten:   ./client.sh"

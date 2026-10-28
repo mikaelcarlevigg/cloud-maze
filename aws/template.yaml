@@ -361,6 +361,131 @@ Resources:
       LogGroupName: !Sub "/aws/lambda/${MapFunction}"
       RetentionInDays: 7
 
+  # ---- The control panel: lets you test from a phone browser, no typing ----
+  # Its address contains the stack's unique id, so only you know it. It plays
+  # the authorized client (it reads the map) and lists old paths and a decoy
+  # you can tap to play the attacker.
+
+  PanelRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: state
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt StateTable.Arn
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt RotatorFunction.Arn
+
+  PanelFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-panel"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 15
+      Role: !GetAtt PanelRole.Arn
+      Environment:
+        Variables:
+          TABLE: !Ref StateTable
+          API: !GetAtt HttpApi.ApiEndpoint
+          INTERVAL: !Sub "${IntervalMinutes}"
+          TOKEN: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+          ROTATOR: !Ref RotatorFunction
+      Code:
+        ZipFile: |
+          import html, os, time
+          from datetime import datetime, timezone
+          import boto3
+
+          table = boto3.resource("dynamodb").Table(os.environ["TABLE"])
+          API = os.environ["API"]
+
+          def hm(ts):
+              return datetime.fromtimestamp(int(ts), timezone.utc).strftime("%H:%M:%S")
+
+          def link(path, text):
+              url = html.escape(f"{API}/v1/{path}/orders")
+              return f'<a href="{url}">{html.escape(text)}</a>'
+
+          def handler(event, context):
+              token = (event.get("pathParameters") or {}).get("token")
+              if token != os.environ["TOKEN"]:
+                  return {"statusCode": 404, "body": "not found"}
+              item = table.get_item(Key={"pk": "orders-api"}).get("Item")
+              if not item:
+                  boto3.client("lambda").invoke(FunctionName=os.environ["ROTATOR"])
+                  item = table.get_item(Key={"pk": "orders-api"}).get("Item")
+              now = int(time.time())
+              left = int(item["opened"]) + int(os.environ["INTERVAL"]) * 60 - now
+              cur = item["current"]
+              closed = sorted(item.get("closed", {}).items(), key=lambda kv: -kv[1]["c"])[:5]
+              old = "".join(
+                  f"<li>{link(p, p)}<br><small>fanns {hm(w['o'])} till {hm(w['c'])} UTC</small></li>"
+                  for p, w in closed) or "<li>Inga än. Den första stängs om några minuter.</li>"
+              body = f"""<!doctype html><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <meta http-equiv="refresh" content="15"><title>Cloud Maze</title>
+          <style>body{{font:16px/1.5 system-ui,sans-serif;max-width:560px;margin:0 auto;padding:16px}}
+          code,a{{font-family:ui-monospace,monospace;word-break:break-all}}
+          section{{border:1px solid #ccd;border-radius:10px;padding:12px;margin:12px 0}}
+          h2{{font-size:15px;margin:0 0 6px}}small{{color:#667}}</style>
+          <h1>Cloud Maze</h1>
+          <p>Uppdateras var 15:e sekund. Klockan är {hm(now)} UTC.</p>
+          <section><h2>Behörig klient</h2>
+          <p>Kartan säger: {link(cur, "/v1/" + cur + "/orders")}</p>
+          <p>Nästa flytt om cirka {max(0, left)} sekunder. Tryck på länken: du får ordrarna.</p></section>
+          <section><h2>Du är angriparen: gamla vägar</h2>
+          <p>De här vägarna har stängts. Tryck på en: du får ett tomt svar och ett larm i din e-post.</p>
+          <ul>{old}</ul></section>
+          <section><h2>Lockbete</h2>
+          <p>En väg från en läckt konfigfil. Den har aldrig funnits på någon karta.</p>
+          <p>{link(item["decoys"][0], item["decoys"][0])}</p></section>
+          <p><small>Ta bort allt: CloudFormation, välj stacken, Delete.</small></p>"""
+              return {"statusCode": 200, "headers": {"content-type": "text/html; charset=utf-8"},
+                      "body": body}
+
+  PanelLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${PanelFunction}"
+      RetentionInDays: 7
+
+  PanelIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt PanelFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  PanelRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /panel/{token}"
+      Target: !Sub "integrations/${PanelIntegration}"
+
+  PanelApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PanelFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*"
+
   # ---- Safety net: an e-mail if the account's costs start to rise ----
 
   CostBudget:
@@ -384,6 +509,12 @@ Resources:
               Address: !Ref AlarmEmail
 
 Outputs:
+  PanelUrl:
+    Description: Öppna den här länken i mobilen för att testa
+    Value: !Sub
+      - "${Endpoint}/panel/${Token}"
+      - Endpoint: !GetAtt HttpApi.ApiEndpoint
+        Token: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
   ApiEndpoint:
     Value: !GetAtt HttpApi.ApiEndpoint
   MapFunction:
