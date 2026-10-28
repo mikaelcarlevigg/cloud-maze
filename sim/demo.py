@@ -53,12 +53,12 @@ def main() -> None:
 
     def on_alarm(e: dict) -> None:
         alarms.append(e)
-        text = {"old_path": "gammal väg använd", "decoy": "lockbete använt",
-                "map_denied": "obehörig försökte hämta kartan"}[e["kind"]]
-        say("LARM", f"{text}: {e['path']}")
+        text = {"old_path": "old path used", "decoy": "decoy used",
+                "map_denied": "unauthorized attempt to fetch the map"}[e["kind"]]
+        say("ALARM", f"{text}: {e['path']}")
         if e["window"]:
             a, b = e["window"]
-            say("SPÅRNING", f"vägen {e['path']} fanns bara {rel(a)} till {rel(b)}, så läckan skedde då")
+            say("TRACE", f"path {e['path']} only existed {rel(a)} to {rel(b)}, so that is when it leaked")
 
     server = CloudMazeServer(("127.0.0.1", 0), maze, {"partner-1": client_key}, map_key, on_alarm)
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -66,13 +66,13 @@ def main() -> None:
 
     def on_move(kind: str, path) -> None:
         if kind == "opened":
-            say("MOTOR", f"öppnar ny väg {path.id} och publicerar kartan")
+            say("ENGINE", f"opens new path {path.id} and publishes the map")
         else:
-            say("MOTOR", f"stänger {path.id}, den är nu en snubbeltråd")
+            say("ENGINE", f"closes {path.id}, it is now a tripwire")
 
-    print("\nCloud Maze, lokal demo")
-    print(f"Vägen byts var {args.interval:g}:e sekund, med {args.overlap:g} s överlapp.\n")
-    say("MOTOR", f"första vägen är {maze.current.id}")
+    print("\nCloud Maze, local demo")
+    print(f"The path moves every {args.interval:g} s, with {args.overlap:g} s of overlap.\n")
+    say("ENGINE", f"the first path is {maze.current.id}")
     engine = Engine(maze, on_move)
     engine.start()
 
@@ -92,40 +92,40 @@ def main() -> None:
                 if path != last:
                     if last:
                         stats["switches"] += 1
-                    say("KLIENT", f"använder väg {path} enligt kartan, fick ordrarna")
+                    say("CLIENT", f"uses path {path} from the map, got the orders")
                     last = path
             except Exception as error:
                 stats["failed"] += 1
-                say("KLIENT", f"MISSLYCKADES: {error}")
+                say("CLIENT", f"FAILED: {error}")
             stop.wait(0.25)
 
     def run_attacker() -> None:
         stop.wait(1.0)
         leaked = maze.current.id
         decoy = sorted(maze.decoys)[0]
-        say("ANGRIPARE", f"hittar väg {leaked} i en läckt logg och sparar den")
-        say("ANGRIPARE", f"hittar väg {decoy} i en konfigurationsfil (ett planterat lockbete)")
+        say("ATTACKER", f"finds path {leaked} in a leaked log and saves it")
+        say("ATTACKER", f"finds path {decoy} in a config file (a planted decoy)")
         status, _ = attacker_get(base, f"/v1/{leaked}/orders")
-        say("ANGRIPARE", f"testar {leaked} direkt: svar {status}, vägen fungerar")
-        say("ANGRIPARE", "förbereder angreppet ...")
+        say("ATTACKER", f"tries {leaked} right away: answer {status}, the path works")
+        say("ATTACKER", "prepares the attack ...")
 
         stop.wait(max(0.0, START + 2.2 * args.interval - time.time()))
         status, body = attacker_get(base, f"/v1/{leaked}/orders")
         stolen.append(len(json.loads(body).get("orders", [])))
-        say("ANGRIPARE", f"angriper via {leaked}: svar {status}, {body}")
+        say("ATTACKER", f"attacks through {leaked}: answer {status}, {body}")
 
         stop.wait(1.0)
         status, body = attacker_get(base, f"/v1/{decoy}/orders")
         stolen.append(len(json.loads(body).get("orders", [])))
-        say("ANGRIPARE", f"provar {decoy}: svar {status}, {body}")
+        say("ATTACKER", f"tries {decoy}: answer {status}, {body}")
 
         stop.wait(1.0)
         status, _ = attacker_get(base, "/map")
-        say("ANGRIPARE", f"försöker hämta kartan utan nycklar: svar {status}")
+        say("ATTACKER", f"tries to fetch the map without keys: answer {status}")
 
         guess = secrets.token_hex(3)
         status, _ = attacker_get(base, f"/v1/{guess}/orders")
-        say("ANGRIPARE", f"gissar en väg, {guess}: svar {status}")
+        say("ATTACKER", f"guesses a path, {guess}: answer {status}")
 
     threads = [threading.Thread(target=run_client, daemon=True),
                threading.Thread(target=run_attacker, daemon=True)]
@@ -139,12 +139,12 @@ def main() -> None:
     server.shutdown()
 
     false_alarms = sum(1 for a in alarms if a["agent"] == USER_AGENT)
-    print("\nResultat")
-    print(f"  Behörig klient:   {stats['ok']} av {stats['calls']} anrop lyckades, "
-          f"{stats['failed']} misslyckades, bytte väg {stats['switches']} gånger")
-    print(f"  Larm:             {len(alarms)}, varav {false_alarms} falsklarm")
-    print(f"  Angriparen:       fick {sum(stolen)} ordrar via gamla vägar och lockbeten")
-    print(f"  Kartans livslängd: högst {args.interval + args.overlap:g} s\n")
+    print("\nResult")
+    print(f"  Authorized client: {stats['ok']} of {stats['calls']} requests succeeded, "
+          f"{stats['failed']} failed, switched paths {stats['switches']} times")
+    print(f"  Alarms:            {len(alarms)}, of which {false_alarms} false alarms")
+    print(f"  Attacker:          got {sum(stolen)} orders through old paths and decoys")
+    print(f"  Map lifetime:      at most {args.interval + args.overlap:g} s\n")
 
 
 if __name__ == "__main__":

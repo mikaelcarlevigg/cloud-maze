@@ -83,11 +83,11 @@ def main() -> None:
         try:
             orders = client.orders()
             path = client.map["path"]
-            note = "  <- ny väg från kartan" if last_path and path != last_path else ""
-            print(f"{time.strftime('%H:%M:%S')}  OK  /v1/{path}/orders  {len(orders)} ordrar{note}", flush=True)
+            note = "  <- new path from the map" if last_path and path != last_path else ""
+            print(f"{time.strftime('%H:%M:%S')}  OK  /v1/{path}/orders  {len(orders)} orders{note}", flush=True)
             last_path = path
         except Exception as error:
-            print(f"{time.strftime('%H:%M:%S')}  FEL  {error}", flush=True)
+            print(f"{time.strftime('%H:%M:%S')}  ERROR  {error}", flush=True)
         time.sleep(args.every)
 
 

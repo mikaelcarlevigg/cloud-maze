@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# En behörig klient. Hämtar kartan med sin IAM-identitet och anropar alltid aktuell väg.
-# Användning:  ./client.sh [minuter]   (standard 6 minuter, avsluta tidigare med Ctrl+C)
+# An authorized client. Fetches the map with its IAM identity and always calls the current path.
+# Usage:  ./client.sh [minutes]   (6 minutes by default, stop earlier with Ctrl+C)
 set -uo pipefail
 cd "$(dirname "$0")"
 source .cloudmaze.env
@@ -8,7 +8,7 @@ source credentials.sh
 if [ -n "${REGION:-}" ]; then export AWS_REGION="$REGION"; fi
 ensure_aws_credentials || exit 1
 if [ -n "${ACCOUNT:-}" ] && [ "$AWS_ACCOUNT_ID" != "$ACCOUNT" ]; then
-  echo "Du är inloggad i konto $AWS_ACCOUNT_ID, men Cloud Maze är installerat i $ACCOUNT."
+  echo "You are signed in to account $AWS_ACCOUNT_ID, but Cloud Maze is installed in $ACCOUNT."
   exit 1
 fi
 
@@ -25,10 +25,10 @@ fetch_map() {
   refresh_at=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["refresh_at"])' "$MAP")
 }
 
-summary() { echo; echo "Klienten: $ok lyckade, $failed misslyckade anrop."; }
+summary() { echo; echo "Client: $ok requests succeeded, $failed failed."; }
 trap 'summary; exit 0' INT
 
-echo "Behörig klient startad. Anropar tjänsten var 10:e sekund i ${1:-6} minuter."
+echo "Authorized client started. Calling the service every 10 seconds for ${1:-6} minutes."
 while [ "$(date +%s)" -lt "$end" ]; do
   if [ "$(date +%s)" -ge "$refresh_at" ]; then fetch_map; fi
   body=$(curl -s -w '\n%{http_code}' "$url")
@@ -36,12 +36,12 @@ while [ "$(date +%s)" -lt "$end" ]; do
   note=""
   count=$(head -n1 <<<"$body" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("orders", [])))' 2>/dev/null || echo 0)
   # The real orders are from Nordvind AB. Anything else means this IP address is in the shadow world.
-  grep -q "Nordvind AB" <<<"$body" || [ "$count" = 0 ] || note="  <- FALSKA ordrar: din IP-adress är i skuggvärlden"
-  [ -n "$last" ] && [ "$url" != "$last" ] && note="  <- ny väg från kartan$note"
+  grep -q "Nordvind AB" <<<"$body" || [ "$count" = 0 ] || note="  <- FAKE orders: your IP address is in the shadow world"
+  [ -n "$last" ] && [ "$url" != "$last" ] && note="  <- new path from the map$note"
   if [ "$code" = "200" ] && [ "$count" -gt 0 ]; then
-    ok=$((ok + 1)); echo "$(date +%H:%M:%S)  OK   $url  ($count ordrar)$note"
+    ok=$((ok + 1)); echo "$(date +%H:%M:%S)  OK   $url  ($count orders)$note"
   else
-    failed=$((failed + 1)); echo "$(date +%H:%M:%S)  FEL  $url  (svar $code)"
+    failed=$((failed + 1)); echo "$(date +%H:%M:%S)  ERROR  $url  (answer $code)"
     refresh_at=0
   fi
   last="$url"

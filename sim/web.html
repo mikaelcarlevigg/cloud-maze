@@ -87,57 +87,57 @@
 <main>
   <header style="display:flex;flex-direction:column;gap:6px">
     <h1>Cloud Maze Simulator</h1>
-    <p class="lede">Tjänstens adress flyttar sig hela tiden. Den behöriga klienten har en karta och hänger med. Du spelar angripare: stjäl en väg och se vad som händer när du använder den.</p>
+    <p class="lede">The service's address keeps moving. The authorized client has a map and keeps up. You play the attacker: steal a path and see what happens when you use it.</p>
   </header>
 
   <section aria-labelledby="hNow">
-    <h2 id="hNow">Vägen just nu</h2>
+    <h2 id="hNow">The path right now</h2>
     <div class="route" id="route">/v1/<b>------</b>/orders</div>
     <div class="bar" aria-hidden="true"><i id="bar"></i></div>
-    <div class="row"><span id="nextMove">Nästa flytt om –</span><span id="clock">0 s</span></div>
+    <div class="row"><span id="nextMove">Next move in –</span><span id="clock">0 s</span></div>
     <div class="paths" id="paths"></div>
   </section>
 
   <section aria-labelledby="hClient">
-    <h2 id="hClient">Behörig klient</h2>
+    <h2 id="hClient">Authorized client</h2>
     <div class="stats">
-      <div class="stat"><b id="cCalls">0</b><span>anrop</span></div>
-      <div class="stat good"><b id="cOk">0</b><span>lyckade</span></div>
-      <div class="stat"><b id="cFail">0</b><span>misslyckade</span></div>
+      <div class="stat"><b id="cCalls">0</b><span>requests</span></div>
+      <div class="stat good"><b id="cOk">0</b><span>succeeded</span></div>
+      <div class="stat"><b id="cFail">0</b><span>failed</span></div>
     </div>
-    <p class="answer" id="cLast">Startar …</p>
+    <p class="answer" id="cLast">Starting …</p>
   </section>
 
   <section aria-labelledby="hAttack">
-    <h2 id="hAttack">Du är angriparen</h2>
+    <h2 id="hAttack">You are the attacker</h2>
     <div class="actions">
-      <button class="primary" id="aSteal">Stjäl vägen som gäller nu</button>
-      <button id="aUse" disabled>Angrip med stulen väg</button>
-      <button id="aDecoy">Prova väg från läckt konfig</button>
-      <button id="aMap">Hämta kartan utan nycklar</button>
-      <button id="aGuess">Gissa en väg</button>
-      <button id="aStats">Visa resultat</button>
+      <button class="primary" id="aSteal">Steal the current path</button>
+      <button id="aUse" disabled>Attack with the stolen path</button>
+      <button id="aDecoy">Try a path from a leaked config</button>
+      <button id="aMap">Fetch the map without keys</button>
+      <button id="aGuess">Guess a path</button>
+      <button id="aStats">Show results</button>
     </div>
-    <p class="answer" id="aLast">Tips: stjäl vägen, vänta tills den är stängd och angrip sedan.</p>
+    <p class="answer" id="aLast">Tip: steal the path, wait until it has closed, then attack.</p>
   </section>
 
   <section aria-labelledby="hLog">
-    <h2 id="hLog">Larm</h2>
-    <div class="log" id="log"><p class="empty">Inga larm än. Den behöriga klienten löser aldrig ut något.</p></div>
+    <h2 id="hLog">Alarms</h2>
+    <div class="log" id="log"><p class="empty">No alarms yet. The authorized client never sets one off.</p></div>
   </section>
 
   <section aria-labelledby="hSet">
-    <h2 id="hSet">Inställningar</h2>
+    <h2 id="hSet">Settings</h2>
     <div class="controls">
-      <label for="speed">Vägen flyttas var</label>
+      <label for="speed">The path moves every</label>
       <select id="speed">
-        <option value="6">6:e sekund</option>
-        <option value="10" selected>10:e sekund</option>
-        <option value="20">20:e sekund</option>
+        <option value="6">6 seconds</option>
+        <option value="10" selected>10 seconds</option>
+        <option value="20">20 seconds</option>
       </select>
-      <button id="pause" style="min-height:0;padding:8px 14px">Pausa</button>
+      <button id="pause" style="min-height:0;padding:8px 14px">Pause</button>
     </div>
-    <p class="lede" style="font-size:13px">Det här är en simulering som körs helt i din webbläsare. Den visar logiken från konceptet: överlapp mellan gammal och ny väg, signerad karta, snubbeltrådar och lockbeten. I AWS skulle samma steg köras av EventBridge, Step Functions, API Gateway och Security Hub.</p>
+    <p class="lede" style="font-size:13px">This is a simulation that runs entirely in your browser. It shows the logic of the concept: overlap between the old and new path, a signed map, tripwires and decoys. On AWS the same steps would run in EventBridge, Step Functions, API Gateway and Security Hub.</p>
   </section>
 </main>
 
@@ -197,11 +197,11 @@
     if (st === 'open') {
       client.ok++;
       const moved = client.last && client.last !== client.map.path;
-      $('cLast').textContent = `GET /v1/${client.map.path}/orders → 200, 2 ordrar` + (moved ? '  (ny väg från kartan)' : '');
+      $('cLast').textContent = `GET /v1/${client.map.path}/orders → 200, 2 orders` + (moved ? '  (new path from the map)' : '');
       client.last = client.map.path;
     } else {
       client.fail++;
-      $('cLast').textContent = `GET /v1/${client.map.path}/orders → misslyckades`;
+      $('cLast').textContent = `GET /v1/${client.map.path}/orders → failed`;
     }
   }
 
@@ -218,16 +218,16 @@
   function renderLog() {
     const log = $('log');
     if (!alarms.length) return;
-    const label = { old: 'Gammal väg använd', decoy: 'Lockbete använt', map: 'Obehörig försökte hämta kartan' };
+    const label = { old: 'Old path used', decoy: 'Decoy used', map: 'Unauthorized attempt to fetch the map' };
     log.replaceChildren(...alarms.map(a => {
       const d = document.createElement('div'); d.className = 'alarm';
       const head = document.createElement('div'); head.className = 't'; head.textContent = `${fmt(a.t)} · ${a.id}`;
       const what = document.createElement('div'); what.textContent = label[a.kind];
       d.append(head, what);
       const trace = document.createElement('div'); trace.className = 'trace';
-      if (a.window) trace.textContent = `Spårning: vägen fanns bara ${fmt(a.window[0])} till ${fmt(a.window[1])}, så informationen läckte då.`;
-      else if (a.kind === 'decoy') trace.textContent = 'Spårning: vägen har aldrig funnits på någon karta. Den låg bara i den planterade konfigfilen, så det är den som har läckt.';
-      else trace.textContent = 'Anropet saknade giltig signatur och nekades.';
+      if (a.window) trace.textContent = `Trace: the path only existed ${fmt(a.window[0])} to ${fmt(a.window[1])}, so that is when the information leaked.`;
+      else if (a.kind === 'decoy') trace.textContent = 'Trace: the path was never on any map. It only existed in the planted config file, so that file is what leaked.';
+      else trace.textContent = 'The request had no valid signature and was refused.';
       d.append(trace);
       return d;
     }));
@@ -237,31 +237,31 @@
 
   function attack(id) {
     const t = now(), st = status(id);
-    if (st === 'open') { stolenOrders += 2; return answer(`GET /v1/${id}/orders → 200, 2 ordrar. Vägen är fortfarande öppen. Vänta tills den stängs.`); }
+    if (st === 'open') { stolenOrders += 2; return answer(`GET /v1/${id}/orders → 200, 2 orders. The path is still open. Wait until it closes.`); }
     if (st === 'closed' || st === 'decoy') {
       alarm(st === 'closed' ? 'old' : 'decoy', id, t);
-      return answer(`GET /v1/${id}/orders → 200 {"orders": []}. Ser normalt ut, men du fick ingenting och ett larm har gått.`);
+      return answer(`GET /v1/${id}/orders → 200 {"orders": []}. Looks normal, but you got nothing and an alarm has gone off.`);
     }
-    answer(`GET /v1/${id}/orders → 404. Ingen väg och inget larm, en gissning ger ingenting.`);
+    answer(`GET /v1/${id}/orders → 404. No path and no alarm: a guess gets you nothing.`);
   }
 
   $('aSteal').onclick = () => {
     stolen = maze.current.id; $('aUse').disabled = false;
-    $('aUse').textContent = `Angrip med ${stolen}`;
-    answer(`Du har stulit /v1/${stolen}/orders, till exempel ur en läckt logg. Den fungerar nu, men hur länge?`);
+    $('aUse').textContent = `Attack with ${stolen}`;
+    answer(`You have stolen /v1/${stolen}/orders, say from a leaked log. It works now, but for how long?`);
     render();
   };
   $('aUse').onclick = () => stolen && attack(stolen);
   $('aDecoy').onclick = () => attack(maze.decoys[0]);
   $('aGuess').onclick = () => attack(hex());
-  $('aMap').onclick = () => { alarm('map', 'kartan', now()); answer('GET /map → 401 unauthorized. Kartan kräver klientens nyckel.'); };
-  $('aStats').onclick = () => answer(`Klienten: ${client.ok} av ${client.calls} anrop lyckades. Du: ${stolenOrders} ordrar via öppna vägar, 0 via stängda vägar och lockbeten. Larm: ${alarms.length}.`);
+  $('aMap').onclick = () => { alarm('map', 'map', now()); answer('GET /map → 401 unauthorized. The map requires the client\'s key.'); };
+  $('aStats').onclick = () => answer(`Client: ${client.ok} of ${client.calls} requests succeeded. You: ${stolenOrders} orders through open paths, 0 through closed paths and decoys. Alarms: ${alarms.length}.`);
 
   // A new schedule is pushed to the client, so its map never outlives the old timing.
   $('speed').onchange = e => { interval = +e.target.value; overlap = interval * 0.3; client.map = null; };
   $('pause').onclick = () => {
-    if (paused) { offset += (performance.now() - pausedAt) / 1000; paused = false; $('pause').textContent = 'Pausa'; }
-    else { pausedAt = performance.now(); paused = true; $('pause').textContent = 'Fortsätt'; }
+    if (paused) { offset += (performance.now() - pausedAt) / 1000; paused = false; $('pause').textContent = 'Pause'; }
+    else { pausedAt = performance.now(); paused = true; $('pause').textContent = 'Resume'; }
   };
 
   // ---- Rendering ----
@@ -272,21 +272,21 @@
     const next = maze.current.opened + interval;
     $('bar').style.width = `${Math.min(100, ((t - maze.current.opened) / interval) * 100)}%`;
     $('nextMove').textContent = maze.previous
-      ? `Överlapp: gamla vägen stängs om ${Math.max(0, maze.current.opened + overlap - t).toFixed(1)} s`
-      : `Nästa flytt om ${Math.max(0, next - t).toFixed(1)} s`;
+      ? `Overlap: the old path closes in ${Math.max(0, maze.current.opened + overlap - t).toFixed(1)} s`
+      : `Next move in ${Math.max(0, next - t).toFixed(1)} s`;
     $('clock').textContent = `${Math.floor(t)} s`;
 
     const rows = maze.history.map(p => {
       const st = status(p.id);
-      const label = st === 'open' ? (p === maze.previous ? 'överlapp, stängs snart' : 'öppen') : 'stängd, snubbeltråd';
+      const label = st === 'open' ? (p === maze.previous ? 'overlap, closing soon' : 'open') : 'closed, tripwire';
       return [p.id, st === 'open' ? 'open' : 'closed', label];
     });
-    rows.push([maze.decoys[0], 'decoy', 'lockbete i läckt konfig']);
+    rows.push([maze.decoys[0], 'decoy', 'decoy in leaked config']);
     $('paths').replaceChildren(...rows.map(([id, cls, label]) => {
       const r = document.createElement('div'); r.className = 'path';
       const name = document.createElement('span'); name.textContent = id;
       const chips = document.createElement('span'); chips.style.display = 'flex'; chips.style.gap = '6px';
-      if (id === stolen) chips.append(Object.assign(document.createElement('span'), { className: 'chip stolen', textContent: 'stulen' }));
+      if (id === stolen) chips.append(Object.assign(document.createElement('span'), { className: 'chip stolen', textContent: 'stolen' }));
       chips.append(Object.assign(document.createElement('span'), { className: `chip ${cls}`, textContent: label }));
       r.append(name, chips);
       return r;
