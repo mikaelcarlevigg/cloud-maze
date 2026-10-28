@@ -1,168 +1,168 @@
 # Cloud Maze
 
-**Infrastruktur i AWS som ändrar form hela tiden. Angripare hittar aldrig samma väg två gånger, men behöriga användare har alltid en väg in.**
+**AWS infrastructure that keeps changing shape. Attackers never find the same path twice, but authorized users always have a way in.**
 
-Cloud Maze är ett koncept för *moving target defense* (rörligt försvar) byggt på AWS. Tjänster som exponeras mot internet, som API:er, administrativa gränssnitt och partnerintegrationer, flyttar regelbundet sina adresser, sina vägar och sina nycklar. Den som är behörig får en aktuell karta och märker ingenting. Den som har kartlagt systemet utifrån sitter plötsligt med en karta som inte stämmer längre. Om angriparen ändå försöker följa den gamla kartan går ett larm.
+Cloud Maze is a *moving target defense* concept built on AWS. Internet-facing services, such as APIs, admin interfaces and partner integrations, regularly move their addresses, their routes and their keys. Authorized clients get an up-to-date map and notice nothing. Anyone who mapped the system from the outside is suddenly holding a map that no longer matches. If an attacker still tries to follow the old map, an alarm goes off.
 
-**Vill du prova?**
-- **På riktigt i AWS:** [`aws/`](aws/README.md) installerar fas 1 i ditt eget AWS-konto. Det går att göra från mobilen via AWS CloudShell.
-- **Utan AWS-konto:** [`sim/`](sim/README.md) innehåller en simulering, både som webbsida (`sim/web.html`) och i Python (`python3 demo.py`).
-
----
-
-## Innehåll
-
-1. [Problemet](#1-problemet)
-2. [Idén](#2-idén)
-3. [Labyrintens tre regler](#3-labyrintens-tre-regler)
-4. [Hur det fungerar](#4-hur-det-fungerar)
-5. [Arkitektur på AWS](#5-arkitektur-på-aws)
-6. [Två resor genom labyrinten](#6-två-resor-genom-labyrinten)
-7. [Vad Cloud Maze inte skyddar mot](#7-vad-cloud-maze-inte-skyddar-mot)
-8. [Vem det är till för](#8-vem-det-är-till-för)
-9. [Vad som redan finns](#9-vad-som-redan-finns)
-10. [Hur man vet att det fungerar](#10-hur-man-vet-att-det-fungerar)
-11. [Risker och öppna frågor](#11-risker-och-öppna-frågor)
-12. [Färdplan](#12-färdplan)
-13. [Ordlista](#13-ordlista)
+**Want to try it?**
+- **For real on AWS:** [`aws/`](aws/README.md) installs phase 1 in your own AWS account. You can do it from a phone through the CloudFormation console.
+- **Without an AWS account:** [`sim/`](sim/README.md) has a simulation, both as a web page (`sim/web.html`) and in Python (`python3 demo.py`).
 
 ---
 
-## 1. Problemet
+## Contents
 
-**Infrastruktur står still, angripare har gott om tid.**
+1. [The problem](#1-the-problem)
+2. [The idea](#2-the-idea)
+3. [The three rules of the maze](#3-the-three-rules-of-the-maze)
+4. [How it works](#4-how-it-works)
+5. [Architecture on AWS](#5-architecture-on-aws)
+6. [Two journeys through the maze](#6-two-journeys-through-the-maze)
+7. [What Cloud Maze does not protect against](#7-what-cloud-maze-does-not-protect-against)
+8. [Who it is for](#8-who-it-is-for)
+9. [What already exists](#9-what-already-exists)
+10. [How to tell it works](#10-how-to-tell-it-works)
+11. [Risks and open questions](#11-risks-and-open-questions)
+12. [Roadmap](#12-roadmap)
+13. [Glossary](#13-glossary)
 
-Nästan varje attack börjar med rekognosering. Angriparen skannar, listar och kartlägger vilka adresser som svarar, vilka sökvägar som finns, vilka versioner som körs och vilka nycklar som har läckt i gamla kodrepon. MITRE ATT&CK har en egen taktik för detta: *Reconnaissance* (TA0043).
+---
 
-Det som gör rekognoseringen lönsam är att målet står still. En adress som var öppen i mars är oftast öppen i september. En API-nyckel som läckte för ett år sedan fungerar ofta fortfarande. Angriparen kan kartlägga i lugn och ro, vänta på en ny sårbarhet och slå till när det passar.
+## 1. The problem
 
-Vanliga försvar handlar om att göra varje dörr starkare: autentisering, brandväggar och patchning. Det är nödvändigt, men alla dörrar står kvar på samma plats. Cloud Maze angriper i stället själva förutsättningen, nämligen att kartan stämmer.
+**Infrastructure stands still, and attackers have plenty of time.**
 
-## 2. Idén
+Almost every attack starts with reconnaissance. The attacker scans, enumerates and maps which addresses respond, which paths exist, which versions are running and which keys have leaked in old code repositories. MITRE ATT&CK has a tactic of its own for this: *Reconnaissance* (TA0043).
 
-Tänk dig en labyrint där väggarna flyttar sig hela tiden.
+Reconnaissance pays off because the target stands still. An address that was open in March is usually still open in September. An API key that leaked a year ago often still works. The attacker can map at leisure, wait for a new vulnerability and strike when it suits them.
 
-- **För den som har kartan** spelar det ingen roll. Kartan uppdateras i samma takt som labyrinten, och det finns alltid en öppen väg till målet.
-- **För den som ritade sin egen karta igår** är labyrinten en ny labyrint. Korridorerna leder fel och dörrarna finns inte kvar.
-- **Återvändsgränderna är snubbeltrådar.** En behörig klient går aldrig in i en återvändsgränd, eftersom kartan inte visar dem. Den som ändå gör det avslöjar att den navigerar efter en gammal eller stulen karta.
+The usual defenses make each door stronger: authentication, firewalls and patching. That is necessary, but every door stays in the same place. Cloud Maze attacks the assumption itself: that the map is correct.
 
-I AWS motsvaras väggarna av sådant som redan går att ändra via API på några sekunder: sökvägar i API Gateway, DNS-namn i Route 53, regler i säkerhetsgrupper och WAF, och nycklar i Secrets Manager. Det som saknas är en motor som ändrar dem samordnat och säkert, och en karta som håller behöriga klienter uppdaterade. Det är det Cloud Maze är.
+## 2. The idea
 
-## 3. Labyrintens tre regler
+Picture a maze whose walls keep moving.
 
-Konceptet vilar på tre regler som alltid måste gälla.
+- **For whoever has the map**, it makes no difference. The map updates as fast as the maze does, and there is always an open path to the goal.
+- **For whoever drew their own map yesterday**, it is a new maze. The corridors lead the wrong way and the doors are gone.
+- **The dead ends are tripwires.** An authorized client never walks into a dead end, because the map does not show them. Anyone who does reveals that they are navigating by an old or stolen map.
 
-**Regel 1: Det finns alltid en väg för den behörige.**
-Ingen ändring får lämna en behörig klient utan väg in. Därför byter Cloud Maze aldrig en vägg rakt av. Den nya vägen öppnas först, kartan uppdateras sedan, och den gamla vägen stängs först när en överlappsperiod har gått ut. Under överlappet fungerar båda vägarna.
+On AWS, the walls are things that can already be changed through an API in seconds: paths in API Gateway, DNS names in Route 53, rules in security groups and WAF, and keys in Secrets Manager. What is missing is an engine that changes them in a coordinated, safe way, and a map that keeps authorized clients up to date. That is what Cloud Maze is.
 
-**Regel 2: Varje karta har ett bäst-före-datum.**
-Allt som en angripare kan observera utifrån, som sökvägar, värdnamn, portar och nycklar, har en begränsad livslängd. När den har gått ut är informationen värdlös. Det här kallas kartans *halveringstid*, och det är det viktigaste måttet i hela systemet.
+## 3. The three rules of the maze
 
-**Regel 3: Den som följer en gammal karta avslöjar sig.**
-Ett anrop mot en väg som redan är stängd kan inte komma från en välfungerande behörig klient, eftersom de alltid har aktuell karta. Sådana anrop behandlas därför som starka signaler, inte som brus. Labyrinten innehåller också avsiktliga lockbeten: vägar och nycklar som ser äkta ut men aldrig har delats ut till någon.
+The concept rests on three rules that must always hold.
 
-## 4. Hur det fungerar
+**Rule 1: There is always a path for the authorized.**
+No change may leave an authorized client without a way in. So Cloud Maze never swaps a wall outright. The new path opens first, the map is updated next, and the old path closes only after an overlap period. During the overlap, both paths work.
 
-### Väggarna: vad som flyttas
+**Rule 2: Every map has a best-before date.**
+Everything an attacker can observe from the outside, such as paths, hostnames, ports and keys, has a limited lifetime. Once it has passed, the information is worthless. This is the map's *half-life*, and it is the most important measure in the whole system.
 
-Cloud Maze flyttar tre sorters väggar, var för sig eller i kombination:
+**Rule 3: Whoever follows an old map gives themselves away.**
+A request to a path that is already closed cannot come from a working authorized client, because they always have the current map. Such requests are treated as strong signals, not noise. The maze also contains deliberate decoys: paths and keys that look real but were never handed to anyone.
 
-| Vägg | Vad som ändras | Exempel |
+## 4. How it works
+
+### The walls: what moves
+
+Cloud Maze moves three kinds of walls, separately or together:
+
+| Wall | What changes | Example |
 | --- | --- | --- |
-| **Var** | Adressen till tjänsten | `api.exempel.se/v1/k7f2q9/orders` blir `api.exempel.se/v1/m3x8a1/orders` |
-| **Hur** | Vägen dit | Vilka källadresser som släpps in, vilken region eller vilket ursprung som svarar |
-| **Med vad** | Nycklarna | API-nycklar, klientcertifikat och hemligheter roteras |
+| **Where** | The address of the service | `api.example.com/v1/k7f2q9/orders` becomes `api.example.com/v1/m3x8a1/orders` |
+| **How** | The route there | Which source addresses are let in, which region or origin answers |
+| **With what** | The keys | API keys, client certificates and secrets are rotated |
 
-Hur ofta varje vägg flyttas ställs in per tjänst. Ett administrativt gränssnitt kan flytta sig var femtonde minut. Ett partner-API med tröga integrationer kanske en gång per dygn.
+How often each wall moves is set per service. An admin interface might move every fifteen minutes. A partner API with slow-moving integrations perhaps once a day.
 
-### Kartan: hur behöriga hittar rätt
+### The map: how the authorized find their way
 
-Behöriga klienter hämtar en karta från en egen kartjänst. Kartan är ett litet, signerat dokument som beskriver hur tjänsten nås just nu och hur länge det gäller:
+Authorized clients fetch a map from a dedicated map service. The map is a small, signed document that describes how to reach the service right now and for how long that holds:
 
 ```json
 {
-  "tjänst": "orders-api",
-  "bas": "https://api.exempel.se/v1/m3x8a1",
-  "giltig_till": "2026-10-28T14:30:00Z",
-  "nästa_hämtning": "2026-10-28T14:20:00Z"
+  "service": "orders-api",
+  "base": "https://api.example.com/v1/m3x8a1",
+  "valid_until": "2026-10-28T14:30:00Z",
+  "refresh_at": "2026-10-28T14:20:00Z"
 }
 ```
 
-Kartjänsten kräver stark identitet, till exempel ömsesidig TLS, AWS IAM-signerade anrop (SigV4) eller IAM Roles Anywhere. Den är alltså inte öppen för vem som helst. Ett litet klientbibliotek sköter allt automatiskt: det hämtar kartan, sparar den, hämtar en ny i god tid före utgångstiden och hämtar om direkt om ett anrop skulle misslyckas. För utvecklaren ser det ut som ett vanligt API-anrop.
+The map service requires strong identity, such as mutual TLS, AWS IAM-signed requests (SigV4) or IAM Roles Anywhere. It is not open to just anyone. A small client library handles everything: it fetches the map, caches it, fetches a new one well before it expires and refetches at once if a request fails. To the developer it looks like an ordinary API call.
 
-### Motorn: hur ändringarna görs säkert
+### The engine: how changes are made safely
 
-Labyrintmotorn kör varje flytt som en kontrollerad process i fyra steg:
+The maze engine runs each move as a controlled process in four steps:
 
-1. **Öppna** den nya vägen och vänta tills den svarar.
-2. **Publicera** den nya kartan.
-3. **Vänta ut överlappet**, så att alla klienter hinner byta.
-4. **Stäng** den gamla vägen och gör den till en snubbeltråd.
+1. **Open** the new path and wait until it responds.
+2. **Publish** the new map.
+3. **Wait out the overlap**, so every client has time to switch.
+4. **Close** the old path and turn it into a tripwire.
 
-Om något steg misslyckas avbryts flytten och den gamla vägen står kvar. Labyrinten blir hellre stillastående en stund än att stänga ute behöriga.
+If any step fails, the move is aborted and the old path stays. The maze would rather stand still for a while than lock out the authorized.
 
-### Snubbeltrådarna: hur angripare upptäcks
+### The tripwires: how attackers are detected
 
-Stängda vägar försvinner inte helt. De övervakas. Dessutom planterar Cloud Maze lockbeten:
+Closed paths do not disappear. They are watched. Cloud Maze also plants decoys:
 
-- **Gamla vägar:** sökvägar och värdnamn som en gång var äkta.
-- **Falska vägar:** sökvägar som ser ut som äkta tjänster men aldrig har funnits på någon karta.
-- **Falska nycklar:** hemligheter som läggs där en angripare skulle leta, till exempel i konfigurationsfiler och miljövariabler, men som inte ger tillgång till något.
+- **Old paths:** paths and hostnames that were once real.
+- **Fake paths:** paths that look like real services but were never on any map.
+- **Fake keys:** secrets placed where an attacker would look, such as configuration files and environment variables, that grant access to nothing.
 
-Eftersom behöriga klienter aldrig rör sådant blir det nästan inga falsklarm. Ett larm betyder i praktiken att någon använder information som de inte borde ha, eller som har läckt.
+Because authorized clients never touch these, there are almost no false alarms. In practice, an alarm means someone is using information they should not have, or that has leaked.
 
-### Skuggvärlden: angriparen får en egen labyrint
+### The shadow world: the attacker gets a maze of their own
 
-En källa som har gått i en snubbeltråd släpps inte bara förbi med ett tomt svar. Den hamnar i en skuggvärld. Där fungerar alla vägar, även den riktiga, men allt angriparen får se är falskt. Angriparen tror att den har lyckats och lägger tid på data som inte finns, medan varje steg den tar visar vad den letar efter. Behöriga klienter påverkas inte, eftersom de aldrig går i snubbeltrådarna.
+A source that hits a tripwire does not just get an empty answer. It is put in a shadow world. There, every path works, the real one included, but everything the attacker sees is fake. The attacker believes they have succeeded and spends time on data that does not exist, while every step they take shows what they are looking for. Authorized clients are not affected, because they never hit the tripwires.
 
-### En LLM för innehåll och analys, inte för beslut
+### An LLM for content and analysis, not for decisions
 
-En LLM kan kopplas på för att skriva trovärdigt innehåll till skuggvärlden och för att bedöma larmen i klartext. Själva labyrinten styrs av regler. Garantin att behöriga alltid har en väg in ska inte bero på en språkmodell, och en angripare som försöker lura modellen ska som mest kunna påverka en text. Vilken LLM som helst med ett OpenAI-kompatibelt API fungerar, till exempel Groq.
+An LLM can be connected to write convincing content for the shadow world and to assess alarms in plain language. The maze itself is driven by rules. The guarantee that the authorized always have a way in should not depend on a language model, and an attacker who tries to trick the model should at most be able to influence a piece of text. Any LLM with an OpenAI-compatible API works, such as Groq.
 
-## 5. Arkitektur på AWS
+## 5. Architecture on AWS
 
 ```mermaid
 flowchart LR
-    subgraph Klienter
-        K[Behörig klient<br/>med klientbibliotek]
-        A[Angripare]
+    subgraph Clients
+        K[Authorized client<br/>with client library]
+        A[Attacker]
     end
 
-    subgraph Kant["Kanten"]
+    subgraph Edge["The edge"]
         CF[CloudFront + AWS WAF]
         R53[Route 53]
     end
 
-    subgraph Labyrint["Labyrinten"]
-        APIGW[API Gateway<br/>roterande sökvägar]
-        SVC[Din tjänst<br/>Lambda / ECS / EC2]
-        LOCK[Lockbeten<br/>Lambda]
+    subgraph Maze["The maze"]
+        APIGW[API Gateway<br/>rotating paths]
+        SVC[Your service<br/>Lambda / ECS / EC2]
+        LOCK[Decoys<br/>Lambda]
     end
 
-    subgraph Motor["Labyrintmotorn"]
+    subgraph Engine["The maze engine"]
         SCH[EventBridge Scheduler]
-        SFN[Step Functions<br/>öppna → publicera → vänta → stäng]
-        DDB[(DynamoDB<br/>labyrintens tillstånd)]
+        SFN[Step Functions<br/>open → publish → wait → close]
+        DDB[(DynamoDB<br/>maze state)]
         SM[Secrets Manager]
     end
 
-    subgraph Karta["Kartjänsten"]
-        MAP[Kart-API<br/>mTLS / SigV4]
-        KMS[KMS<br/>signerar kartor]
+    subgraph Map["The map service"]
+        MAP[Map API<br/>mTLS / SigV4]
+        KMS[KMS<br/>signs maps]
     end
 
-    subgraph Larm["Larm"]
+    subgraph Alarms["Alarms"]
         CW[CloudWatch]
         SH[Security Hub]
         GD[GuardDuty]
     end
 
-    K -->|1. hämtar karta| MAP
-    K -->|2. anropar aktuell väg| CF
-    A -->|gammal eller gissad väg| CF
+    K -->|1. fetches map| MAP
+    K -->|2. calls current path| CF
+    A -->|old or guessed path| CF
     R53 --> CF
     CF --> APIGW --> SVC
-    CF -->|stängda vägar| LOCK
+    CF -->|closed paths| LOCK
     SCH --> SFN
     SFN --> APIGW
     SFN --> CF
@@ -175,127 +175,129 @@ flowchart LR
     GD --> SH
 ```
 
-### Komponenterna
+### The components
 
-| Del | AWS-tjänster | Roll |
+| Part | AWS services | Role |
 | --- | --- | --- |
-| **Kanten** | CloudFront, AWS WAF, Route 53 | Tar emot all trafik. WAF-regler som motorn uppdaterar skickar vidare trafik på aktuella vägar och styr allt annat till lockbetena. |
-| **Labyrinten** | API Gateway, Lambda, ECS eller EC2 | Själva tjänsten, oförändrad. Bara vägen dit ändras. |
-| **Labyrintmotorn** | EventBridge Scheduler, Step Functions, DynamoDB | Schemalägger flyttar och kör dem i de fyra stegen. DynamoDB håller reda på nuvarande och tidigare vägar. |
-| **Nycklar** | Secrets Manager, ACM | Roterar hemligheter och hanterar certifikat. Wildcard-certifikat i ACM gör att nya värdnamn kan tas i bruk direkt. |
-| **Kartjänsten** | API Gateway med mTLS, IAM Roles Anywhere, KMS | Delar ut signerade kartor till behöriga klienter. KMS-signaturen gör att en förfalskad karta upptäcks. |
-| **Larm** | CloudWatch, Security Hub, GuardDuty | Samlar snubbeltrådarnas larm tillsammans med AWS egna hotsignaler. |
+| **The edge** | CloudFront, AWS WAF, Route 53 | Receives all traffic. WAF rules that the engine updates pass traffic on current paths and send everything else to the decoys. |
+| **The maze** | API Gateway, Lambda, ECS or EC2 | The service itself, unchanged. Only the route to it changes. |
+| **The maze engine** | EventBridge Scheduler, Step Functions, DynamoDB | Schedules moves and runs them in the four steps. DynamoDB keeps track of current and past paths. |
+| **Keys** | Secrets Manager, ACM | Rotates secrets and manages certificates. Wildcard certificates in ACM let new hostnames go live immediately. |
+| **The map service** | API Gateway with mTLS, IAM Roles Anywhere, KMS | Hands out signed maps to authorized clients. The KMS signature exposes a forged map. |
+| **Alarms** | CloudWatch, Security Hub, GuardDuty | Collects tripwire alarms alongside AWS's own threat signals. |
 
-### Varför AWS passar
+### Why AWS fits
 
-- **Allt är ett API-anrop.** Varje vägg i labyrinten kan flyttas programmatiskt och på sekunder, utan manuellt arbete.
-- **Betalning per användning.** Motorn och lockbetena bygger på tjänster som Lambda, Step Functions och EventBridge, som kostar per anrop. Det är sällan något körs, så grundkostnaden blir låg.
-- **Inbyggd granskning.** CloudTrail loggar varje ändring motorn gör, så det går i efterhand att se exakt hur labyrinten såg ut vid en viss tidpunkt.
-- **Färdig säkerhetsinfrastruktur.** KMS, Secrets Manager, Security Hub och GuardDuty finns redan och behöver inte byggas.
+- **Everything is an API call.** Every wall in the maze can be moved programmatically in seconds, with no manual work.
+- **Pay per use.** The engine and the decoys run on services such as Lambda, Step Functions and EventBridge, which are billed per request. Little runs most of the time, so the base cost is low.
+- **Built-in audit.** CloudTrail logs every change the engine makes, so you can see afterwards exactly what the maze looked like at a given moment.
+- **Ready-made security infrastructure.** KMS, Secrets Manager, Security Hub and GuardDuty already exist and do not need to be built.
 
-## 6. Två resor genom labyrinten
+## 6. Two journeys through the maze
 
-### En behörig partner
+### An authorized partner
 
-1. Partnerns system startar. Klientbiblioteket hämtar kartan och identifierar sig med sitt certifikat.
-2. Anropen går mot `/v1/m3x8a1/orders`. Allt fungerar som vanligt.
-3. Kl. 14:15 öppnar motorn en ny väg, `/v1/q9z4c2/orders`, och publicerar en ny karta.
-4. Kl. 14:20 hämtar klientbiblioteket den nya kartan i bakgrunden och byter väg.
-5. Kl. 14:30 stängs den gamla vägen. Partnern har inte märkt någonting.
+1. The partner's system starts. The client library fetches the map and identifies itself with its certificate.
+2. Requests go to `/v1/m3x8a1/orders`. Everything works as usual.
+3. At 14:15 the engine opens a new path, `/v1/q9z4c2/orders`, and publishes a new map.
+4. At 14:20 the client library fetches the new map in the background and switches paths.
+5. At 14:30 the old path closes. The partner has noticed nothing.
 
-### En angripare
+### An attacker
 
-1. Angriparen skannar och hittar `/v1/m3x8a1/orders`, kanske via en läckt logg eller en gammal kodrad.
-2. Angriparen lägger tid på att undersöka tjänsten och förbereder ett angrepp.
-3. När angreppet körs har vägen redan stängts. Anropet hamnar hos ett lockbete i stället för hos tjänsten.
-4. Lockbetet svarar trovärdigt men ger ingen tillgång. Samtidigt skickas ett larm till Security Hub med källadress, tidpunkt och vilken gammal väg som användes.
-5. Eftersom varje väg är unik för en viss tidsperiod går det att se *när* angriparen fick sin information. Om vägen bara fanns i en viss logg eller ett visst system pekar det ut läckan.
+1. The attacker scans and finds `/v1/m3x8a1/orders`, perhaps through a leaked log or an old line of code.
+2. The attacker spends time probing the service and prepares an attack.
+3. By the time the attack runs, the path has closed. The request lands in the shadow world instead of at the service.
+4. The shadow world answers convincingly with fake data. At the same time an alarm goes out with the source address, the time and which old path was used.
+5. Because every path is unique to a period of time, you can see *when* the attacker got their information. If the path only appeared in a particular log or system, that points to the leak.
 
-Den femte punkten är en bonus som är lätt att missa: labyrinten skyddar inte bara, den spårar också läckor bakåt i tiden.
+The fifth point is a bonus that is easy to miss: the maze does not just protect, it also traces leaks back in time.
 
-## 7. Vad Cloud Maze inte skyddar mot
+## 7. What Cloud Maze does not protect against
 
-Det är viktigt att vara ärlig om gränserna. Annars blir konceptet bara att gömma saker och hoppas på det bästa.
+Being honest about the limits matters. Otherwise the concept is just hiding things and hoping for the best.
 
-- **Angripare med giltig identitet.** Den som har stulit en behörig klients certifikat kan hämta kartan som vem som helst. Cloud Maze gör den stölden svårare att utnyttja länge, eftersom nycklar också roteras, men den hindrar den inte.
-- **Sårbarheter i själva tjänsten.** När en angripare väl når rätt väg skyddar labyrinten inte mot en bugg i koden. Labyrinten krymper tidsfönstret, den lagar inte buggen.
-- **Kartjänsten är ett nytt mål.** Allt som delar ut kartor blir attraktivt att angripa. Den måste därför vara extra hårt skyddad och övervakad.
-- **Överbelastningsattacker.** Att flytta adresser hjälper lite mot den som bara vill dränka kanten med trafik. Där behövs AWS Shield.
+- **Attackers with a valid identity.** Whoever has stolen an authorized client's certificate can fetch the map like anyone else. Cloud Maze makes such a theft harder to exploit for long, because keys rotate too, but it does not prevent it.
+- **Vulnerabilities in the service itself.** Once an attacker reaches the right path, the maze does not protect against a bug in the code. The maze shrinks the time window; it does not fix the bug.
+- **The map service is a new target.** Anything that hands out maps becomes attractive to attack. It must be especially well protected and monitored.
+- **Denial of service.** Moving addresses does little against someone who just wants to flood the edge with traffic. That calls for AWS Shield.
 
-Cloud Maze ska alltså ses som ett lager *ovanpå* vanlig säkerhet, inte som en ersättning för den. Det gör vanlig säkerhet effektivare genom att ta bort angriparens tidsfördel.
+Cloud Maze should be seen as a layer *on top of* ordinary security, not a replacement for it. It makes ordinary security more effective by removing the attacker's time advantage.
 
-## 8. Vem det är till för
+## 8. Who it is for
 
-**Bäst passar** organisationer som har tjänster som måste vara nåbara från internet, men bara av ett känt antal behöriga klienter:
+**The best fit** is organizations with services that must be reachable from the internet, but only by a known set of authorized clients:
 
-- **Partner- och B2B-API:er**, där motparterna är kända och kan använda ett klientbibliotek.
-- **Administrativa gränssnitt** som av praktiska skäl inte kan ligga helt bakom VPN.
-- **Interna tjänster mellan system**, där båda sidor kontrolleras av samma organisation.
-- **Branscher med höga krav**, som finans, vård och kritisk infrastruktur, där regelverk som NIS2 och DORA ställer krav på aktiv upptäckt av intrång.
+- **Partner and B2B APIs**, where the counterparties are known and can use a client library.
+- **Admin interfaces** that for practical reasons cannot sit entirely behind a VPN.
+- **Internal service-to-service traffic**, where both sides are controlled by the same organization.
+- **Highly regulated industries**, such as finance, healthcare and critical infrastructure, where regulations like NIS2 and DORA require active intrusion detection.
 
-**Sämre passar** helt publika webbplatser och API:er där vem som helst ska kunna ansluta utan förberedelse. Där finns ingen karta att dela ut.
+**A poor fit** is fully public websites and APIs that anyone should be able to use without preparation. There is no map to hand out.
 
-**Affärsmodell:** Cloud Maze kan levereras som en färdig stack som kunden installerar i sitt eget AWS-konto, med licensavgift per skyddad tjänst. Det passar ett försäljningsupplägg via AWS Marketplace och gör att kundens trafik aldrig lämnar kundens eget konto, vilket brukar vara ett viktigt säljargument för säkerhetsköpare.
+**Business model:** Cloud Maze can be delivered as a ready-made stack that customers install in their own AWS account, with a license fee per protected service. That suits selling through AWS Marketplace and means the customer's traffic never leaves the customer's own account, which tends to be an important selling point for security buyers.
 
-## 9. Vad som redan finns
+## 9. What already exists
 
-Cloud Maze bygger på kända idéer. Det nya ligger i hur de kombineras.
+Cloud Maze builds on known ideas. What is new is how they are combined.
 
-| Befintlig idé | Vad den gör | Skillnaden mot Cloud Maze |
+| Existing idea | What it does | How Cloud Maze differs |
 | --- | --- | --- |
-| **Moving target defense** i forskning och i produkter för datorer och servrar | Ändrar minneslayout och programbeteende så att skadlig kod inte hittar rätt | Skyddar maskinen, inte vägarna till molntjänster |
-| **Zero trust**, till exempel AWS Verified Access och Cloudflare Access | Kontrollerar identitet vid varje anrop | Dörren står still. Cloud Maze flyttar dörren och kan kombineras med zero trust. |
-| **Port knocking** och Single Packet Authorization | Öppnar en port först efter en hemlig signal | Ett statiskt hemligt mönster. Cloud Maze roterar allt och larmar på gamla mönster. |
-| **Honeypots och canary tokens** | Lockbeten som larmar vid kontakt | Fristående. I Cloud Maze blir varje stängd väg automatiskt ett lockbete. |
-| **Nyckelrotation** i Secrets Manager | Byter hemligheter regelbundet | Bara en vägg av tre, och utan karta eller snubbeltrådar |
+| **Moving target defense** in research and in endpoint and server products | Changes memory layout and program behavior so malware cannot find its way | Protects the machine, not the routes to cloud services |
+| **Zero trust**, such as AWS Verified Access and Cloudflare Access | Checks identity on every request | The door stays put. Cloud Maze moves the door and can be combined with zero trust. |
+| **Port knocking** and Single Packet Authorization | Opens a port only after a secret signal | A static secret pattern. Cloud Maze rotates everything and alarms on old patterns. |
+| **Honeypots and canary tokens** | Decoys that alarm on contact | Stand-alone. In Cloud Maze every closed path automatically becomes a decoy. |
+| **LLM-driven honeypots** | Generate convincing fake systems and answers | Stand-alone deception. In Cloud Maze it is fed by the tripwires of a moving maze. |
+| **Key rotation** in Secrets Manager | Replaces secrets on a schedule | Only one wall of three, with no map or tripwires |
 
-Det unika i Cloud Maze är kombinationen av tre saker: samordnad rotation av adress, väg och nyckel, garantin att behöriga alltid har en väg in, och att varje gammal väg automatiskt blir en snubbeltråd som kan spåra läckor bakåt i tiden.
+What is unique about Cloud Maze is the combination: coordinated rotation of address, route and key, the guarantee that the authorized always have a way in, and the fact that every old path automatically becomes a tripwire that traces leaks back in time and sends the attacker into a shadow world.
 
-## 10. Hur man vet att det fungerar
+## 10. How to tell it works
 
-Ett säkerhetskoncept måste gå att mäta. Cloud Maze följer fyra mått:
+A security concept has to be measurable. Cloud Maze tracks four measures:
 
-| Mått | Vad det säger | Mål |
+| Measure | What it tells you | Target |
 | --- | --- | --- |
-| **Kartans halveringstid** | Hur länge information om systemet är användbar för en angripare | Så kort som tjänsten tål |
-| **Behöriga misslyckanden** | Andel anrop från behöriga klienter som misslyckas på grund av en flytt | Nära noll |
-| **Snubbeltrådsträffar** | Antal anrop mot stängda vägar och lockbeten | Varje träff utreds |
-| **Falsklarm** | Andel träffar som visar sig komma från behöriga klienter | Nära noll, annars är överlappet för kort |
+| **Map half-life** | How long information about the system stays useful to an attacker | As short as the service can tolerate |
+| **Authorized failures** | Share of requests from authorized clients that fail because of a move | Close to zero |
+| **Tripwire hits** | Number of requests to closed paths and decoys | Every hit is investigated |
+| **False alarms** | Share of hits that turn out to come from authorized clients | Close to zero, otherwise the overlap is too short |
 
-Det andra och det fjärde måttet är de som avgör om konceptet håller i praktiken. Om behöriga klienter börjar snubbla har labyrinten blivit för aggressiv.
+The second and fourth measures decide whether the concept holds up in practice. If authorized clients start tripping, the maze has become too aggressive.
 
-## 11. Risker och öppna frågor
+## 11. Risks and open questions
 
-- **Driftkomplexitet.** Fler rörliga delar betyder fler sätt att gå sönder. Motorn måste vara mycket enkel att förstå och felsöka, och det måste finnas ett nödläge som fryser labyrinten.
-- **Klienter som inte kan uppdateras.** Äldre system och tröga partner kan ha svårt att använda ett klientbibliotek. Ett alternativ är en liten proxy som sköter kartan åt dem.
-- **Cachning och DNS.** DNS-svar och CDN-cachar kan leva längre än förväntat. Överlappsperioden måste vara längre än den längsta cachetiden, och det enklaste är att rotera sökvägar under ett fast domännamn snarare än att rotera domännamn.
-- **Loggar och felsökning.** När adresser ändras hela tiden blir loggar svårare att läsa. Varje loggrad behöver därför märkas med ett stabilt tjänstenamn utöver den aktuella vägen.
-- **Uppfattningen att det är att gömma saker.** Säkerhetsköpare är med rätta skeptiska mot säkerhet som bygger på att saker är okända. Säljbudskapet måste fokusera på det som går att mäta: kortare tidsfönster för angripare och träffsäkra larm.
+- **Operational complexity.** More moving parts mean more ways to break. The engine must be very easy to understand and debug, and there must be an emergency mode that freezes the maze.
+- **Clients that cannot be updated.** Legacy systems and slow-moving partners may struggle to use a client library. One option is a small proxy that handles the map for them.
+- **Caching and DNS.** DNS answers and CDN caches can live longer than expected. The overlap must be longer than the longest cache time, and the simplest approach is to rotate paths under a fixed domain name rather than rotating domain names.
+- **Logs and debugging.** When addresses change all the time, logs get harder to read. Every log line therefore needs a stable service name in addition to the current path.
+- **The perception of hiding things.** Security buyers are rightly skeptical of security that relies on things being unknown. The pitch has to focus on what can be measured: a shorter window for attackers and accurate alarms.
 
-## 12. Färdplan
+## 12. Roadmap
 
-**Fas 1: Minsta fungerande version**
-En tjänst bakom API Gateway med roterande sökväg, en kartjänst med IAM-signerade anrop, ett klientbibliotek för ett programspråk och larm i CloudWatch när någon träffar en stängd väg.
+**Phase 1: Minimum viable version** (built, see [`aws/`](aws/README.md))
+A service behind API Gateway with a rotating path, a map service reachable only with IAM, tripwires that send alarms by e-mail, and a shadow world for sources that hit them. An optional LLM assesses alarms and writes the shadow world's content.
 
-**Fas 2: Fler väggar**
-Rotation av nycklar via Secrets Manager och av tillåtna källadresser i WAF. Falska vägar och falska nycklar som lockbeten. Koppling till Security Hub.
+**Phase 2: More walls**
+Rotation of keys through Secrets Manager and of allowed source addresses in WAF. Fake keys as decoys. Integration with Security Hub.
 
-**Fas 3: Spårning av läckor**
-Unika vägar per klient och tidsperiod, så att en snubbeltrådsträff pekar ut exakt varifrån informationen läckte.
+**Phase 3: Leak tracing**
+Unique paths per client and time period, so a tripwire hit points to exactly where the information leaked.
 
-**Fas 4: Produkt**
-Färdig installation via AWS CloudFormation eller CDK, en överblick över labyrintens tillstånd och lansering på AWS Marketplace.
+**Phase 4: Product**
+Packaged installation through AWS CloudFormation or CDK, an overview of the maze's state and a launch on AWS Marketplace.
 
-## 13. Ordlista
+## 13. Glossary
 
-| Ord | Betydelse |
+| Term | Meaning |
 | --- | --- |
-| **Moving target defense** | Försvar som bygger på att målet ändras över tid, så att angriparens kunskap blir inaktuell |
-| **Rekognosering** | Angriparens kartläggning av ett system innan själva angreppet |
-| **Vägg** | Något i infrastrukturen som Cloud Maze kan flytta: adress, väg eller nyckel |
-| **Karta** | Ett signerat dokument som talar om för behöriga klienter hur tjänsten nås just nu |
-| **Överlapp** | Tiden då både gammal och ny väg fungerar, så att ingen behörig klient stängs ute |
-| **Snubbeltråd** | En stängd väg eller ett lockbete som larmar när någon använder det |
-| **Halveringstid** | Hur länge information om systemet är användbar för en angripare |
-| **mTLS** | Ömsesidig TLS, där både klient och server visar certifikat |
-| **SigV4** | AWS sätt att signera anrop med IAM-identitet |
+| **Moving target defense** | Defense based on the target changing over time, so the attacker's knowledge goes stale |
+| **Reconnaissance** | The attacker's mapping of a system before the actual attack |
+| **Wall** | Something in the infrastructure that Cloud Maze can move: address, route or key |
+| **Map** | A signed document that tells authorized clients how to reach the service right now |
+| **Overlap** | The time when both the old and the new path work, so no authorized client is locked out |
+| **Tripwire** | A closed path or a decoy that raises an alarm when someone uses it |
+| **Shadow world** | Where a source that hit a tripwire ends up: every path works, but all data is fake |
+| **Half-life** | How long information about the system stays useful to an attacker |
+| **mTLS** | Mutual TLS, where both client and server present certificates |
+| **SigV4** | AWS's way of signing requests with an IAM identity |

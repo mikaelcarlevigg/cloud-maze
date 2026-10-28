@@ -1,98 +1,100 @@
-# Cloud Maze, lokal simulering
+# Cloud Maze, local simulation
 
-Prova Cloud Maze på din egen dator. Du behöver inget AWS-konto och inga extra paket, bara Python 3.9 eller senare.
+Try Cloud Maze on your own computer. You need no AWS account and no extra packages, just Python 3.9 or later.
 
-Simuleringen bygger samma logik som konceptet i [huvud-README:n](../README.md): en tjänst vars väg flyttas, en kartjänst för behöriga, och snubbeltrådar som larmar när någon använder en gammal väg.
+The simulation implements the same logic as the concept in the [main README](../README.md): a service whose path moves, a map service for the authorized, and tripwires that raise an alarm when someone uses an old path.
 
-## Bara en mobil?
+## Only have a phone?
 
-Öppna `web.html` i webbläsaren. Den kör samma logik direkt i sidan, och du spelar angripare med knappar.
+Open `web.html` in a browser. It runs the same logic right in the page, and you play the attacker with buttons.
 
-## Kom igång
+## Getting started
 
-Hämta repot och gå till mappen:
+Get the repository and go to the folder:
 
 ```bash
 git clone https://github.com/mikaelcarlevigg/cloud-maze.git
 cd cloud-maze/sim
 ```
 
-### 1. Se hela förloppet på 20 sekunder
+### 1. See the whole thing in 20 seconds
 
 ```bash
 python3 demo.py
 ```
 
-Demon kör en behörig klient och en angripare mot samma labyrint och berättar vad som händer:
+The demo runs an authorized client and an attacker against the same maze and narrates what happens:
 
 ```
-    0.0 s  MOTOR      första vägen är ed3c7e
-    1.0 s  ANGRIPARE  hittar väg ed3c7e i en läckt logg och sparar den
-    4.0 s  MOTOR      öppnar ny väg 8a8488 och publicerar kartan
-    4.4 s  KLIENT     använder väg 8a8488 enligt kartan, fick ordrarna
-    5.5 s  MOTOR      stänger ed3c7e, den är nu en snubbeltråd
-    8.8 s  LARM       gammal väg använd: ed3c7e
-    8.8 s  SPÅRNING   vägen ed3c7e fanns bara 0.0 s till 5.5 s, så läckan skedde då
-    8.8 s  ANGRIPARE  angriper via ed3c7e: svar 200, {"orders": []}
+    0.0 s  ENGINE     the first path is 896241
+    1.0 s  ATTACKER   finds path 896241 in a leaked log and saves it
+    4.0 s  ENGINE     opens new path ae102e and publishes the map
+    4.6 s  CLIENT     uses path ae102e from the map, got the orders
+    5.5 s  ENGINE     closes 896241, it is now a tripwire
+    8.8 s  ALARM      old path used: 896241
+    8.8 s  TRACE      path 896241 only existed 0.0 s to 5.5 s, so that is when it leaked
+    8.8 s  ATTACKER   attacks through 896241: answer 200, {"orders": []}
     ...
-Resultat
-  Behörig klient:   79 av 79 anrop lyckades, 0 misslyckades, bytte väg 4 gånger
-  Larm:             3, varav 0 falsklarm
-  Angriparen:       fick 0 ordrar via gamla vägar och lockbeten
+Result
+  Authorized client: 80 of 80 requests succeeded, 0 failed, switched paths 4 times
+  Alarms:            3, of which 0 false alarms
+  Attacker:          got 0 orders through old paths and decoys
 ```
 
-Lägg märke till tre saker:
+Notice three things:
 
-- **Klienten märker ingenting.** Den byter väg varje gång kartan uppdateras, och inget anrop misslyckas.
-- **Angriparen luras.** Den gamla vägen svarar som vanligt men ger inga ordrar, så angriparen vet inte att den är upptäckt.
-- **Läckan går att spåra.** Larmet visar exakt när den stulna vägen fanns, vilket pekar ut när informationen läckte.
+- **The client notices nothing.** It switches paths every time the map updates, and no request fails.
+- **The attacker is fooled.** The old path answers as usual but returns no orders, so the attacker does not know it has been detected.
+- **The leak can be traced.** The alarm shows exactly when the stolen path existed, which points to when the information leaked.
 
-Du kan ändra takten, till exempel `python3 demo.py --interval 6 --overlap 2 --duration 30`.
+You can change the pace, for example `python3 demo.py --interval 6 --overlap 2 --duration 30`.
 
-### 2. Var angriparen själv
+The local simulation answers stale paths with an empty list. The AWS version goes one step further and sends the attacker into a shadow world of fake orders.
 
-Starta servern i ett terminalfönster:
+### 2. Be the attacker yourself
+
+Start the server in one terminal window:
 
 ```bash
 python3 server.py
 ```
 
-Servern skriver ut vägen som gäller just nu och ett kommando för att starta en behörig klient. Kör det kommandot i ett andra fönster. Klienten anropar tjänsten varje sekund och visar när den byter väg.
+The server prints the current path and a command to start an authorized client. Run that command in a second window. The client calls the service every second and shows when it switches paths.
 
-Spela sedan angripare i ett tredje fönster:
+Then play the attacker in a third window:
 
-1. Kopiera vägen servern visar just nu och kör `curl` mot den. Du får ordrarna.
-2. Vänta tills servern skriver `STÄNGD` för just den vägen. Det tar runt 25 sekunder med standardinställningarna.
-3. Kör samma `curl` igen. Du får ett tomt svar, och servern skriver `LARM`.
-4. Prova också en av vägarna under `Lockbeten`, eller `curl http://127.0.0.1:8080/map` utan nycklar.
+1. Copy the path the server shows right now and run `curl` against it. You get the orders.
+2. Wait until the server prints `CLOSED` for that path. It takes about 25 seconds with the default settings.
+3. Run the same `curl` again. You get an empty answer, and the server prints `ALARM`.
+4. Also try one of the paths listed under `Decoys`, or `curl http://127.0.0.1:8080/map` without keys.
 
-Klienten i det andra fönstret fortsätter fungera hela tiden.
+The client in the second window keeps working the whole time.
 
-### 3. Kör testerna
+### 3. Run the tests
 
 ```bash
 python3 -m unittest -v
 ```
 
-Testerna kontrollerar labyrintens tre regler: att det alltid finns en öppen väg, att en behörig klient aldrig misslyckas när vägen flyttas, och att gamla vägar och lockbeten larmar.
+The tests check the maze's three rules: that there is always an open path, that an authorized client never fails when the path moves, and that old paths and decoys raise alarms.
 
-## Vad varje fil motsvarar i AWS
+## What each file corresponds to on AWS
 
-| Fil | Gör | I AWS |
+| File | What it does | On AWS |
 | --- | --- | --- |
-| `maze.py`, klassen `Maze` | Håller reda på öppna, stängda och falska vägar | DynamoDB |
-| `maze.py`, klassen `Engine` | Flyttar vägen i fyra steg: öppna, publicera, vänta, stäng | EventBridge Scheduler och Step Functions |
-| `server.py`, `/v1/<väg>/orders` | Tjänsten bakom den roterande vägen | CloudFront, AWS WAF och API Gateway |
-| `server.py`, `/map` | Kartjänsten, bara för behöriga | API Gateway med mTLS eller SigV4 |
-| `server.py`, signering av kartan | Gör att en förfalskad karta upptäcks | AWS KMS |
-| `server.py`, larmen | Snubbeltrådar och lockbeten | Lambda, CloudWatch och Security Hub |
-| `client.py` | Hämtar kartan, kontrollerar signaturen, byter väg i tid | Klientbiblioteket |
+| `maze.py`, class `Maze` | Keeps track of open, closed and fake paths | DynamoDB |
+| `maze.py`, class `Engine` | Moves the path in four steps: open, publish, wait, close | EventBridge Scheduler and Step Functions |
+| `server.py`, `/v1/<path>/orders` | The service behind the rotating path | CloudFront, AWS WAF and API Gateway |
+| `server.py`, `/map` | The map service, for the authorized only | API Gateway with mTLS or SigV4 |
+| `server.py`, map signing | Exposes a forged map | AWS KMS |
+| `server.py`, the alarms | Tripwires and decoys | Lambda, CloudWatch and Security Hub |
+| `client.py` | Fetches the map, checks the signature, switches paths in time | The client library |
 
-## Förenklingar
+## Simplifications
 
-Simuleringen visar idén, men den är inte säker att använda på riktigt:
+The simulation shows the idea, but it is not safe to use for real:
 
-- Klienter och kartsignering använder delade hemliga nycklar (HMAC). I AWS skulle klienter identifiera sig med certifikat eller IAM, och KMS skulle signera kartan med en asymmetrisk nyckel.
-- Tjänsten saknar egen inloggning. I verkligheten är Cloud Maze ett lager ovanpå vanlig autentisering, inte en ersättning för den.
-- Allt körs i en process på en dator, och labyrintens tillstånd försvinner när servern stängs.
-- Bara adressen flyttas. Nycklar och tillåtna källadresser roterar inte än.
+- Clients and map signing use shared secret keys (HMAC). On AWS, clients would identify themselves with certificates or IAM, and KMS would sign the map with an asymmetric key.
+- The service has no login of its own. In reality Cloud Maze is a layer on top of ordinary authentication, not a replacement for it.
+- Everything runs in one process on one computer, and the maze state is lost when the server stops.
+- Only the address moves. Keys and allowed source addresses do not rotate yet.

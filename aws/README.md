@@ -1,214 +1,217 @@
-# Cloud Maze i AWS, fas 1
+# Cloud Maze on AWS, phase 1
 
-Den här versionen körs på riktigt i ett AWS-konto. Du kan installera och testa den med bara en mobil, utan att skriva några kommandon.
+This version runs for real in an AWS account. You can install and test it with nothing but a phone, without typing any commands.
 
-Allt installeras i ditt eget konto, och bara du får API-adressen. Vill någon annan prova installerar de i sitt eget AWS-konto på samma sätt.
+Everything is installed in your own account, and only you get the API address. Anyone else who wants to try it installs it in their own AWS account the same way.
 
-## Det här byggs
+## What gets built
 
-| Del | AWS-tjänst | Gör |
+| Part | AWS service | What it does |
 | --- | --- | --- |
-| Labyrintmotorn | EventBridge och Lambda (`rotator`) | Flyttar tjänstens väg varannan minut. En väg lever i två intervall, varav det sista är överlapp. |
-| Labyrintens tillstånd | DynamoDB | Aktuell väg, föregående väg, stängda vägar och lockbeten |
-| Tjänsten | API Gateway och Lambda (`service`) | `GET /v1/<väg>/orders`. Öppen väg ger de riktiga ordrarna. En stängd väg eller ett lockbete är en snubbeltråd: källan hamnar i skuggvärlden och svaret innehåller falska ordrar. Annat ger 404. |
-| Skuggvärlden | DynamoDB och `service` | En källa som har gått i en snubbeltråd får falska ordrar på alla vägar, även den riktiga, i 30 minuter. Behöriga klienter märker ingenting. |
-| Analytikern | Lambda (`analyst`) | Skickar larmmejlet. Med en LLM påkopplad får mejlet en bedömning, och skuggvärlden får falska ordrar som LLM:en har skrivit. |
-| Kartjänsten | Lambda (`map`) | Ger aktuell väg. Den nås bara med din IAM-identitet, aldrig från internet. |
-| Larmen | SNS | Mejlar dig när en källa går i en snubbeltråd, med tidsfönstret som visar när vägen läckte. Ett mejl per källa, inte per anrop. |
-| Kontrollpanelen | API Gateway och Lambda (`panel`) | En webbsida för mobilen med hemlig adress. Visar aktuell väg, gamla vägar och ett lockbete som du trycker på för att testa. |
+| The maze engine | EventBridge and Lambda (`rotator`) | Moves the service's path every two minutes. A path lives for two intervals, the second of which is the overlap. |
+| The maze state | DynamoDB | Current path, previous path, closed paths and decoys |
+| The service | API Gateway and Lambda (`service`) | `GET /v1/<path>/orders`. An open path returns the real orders. A closed path or a decoy is a tripwire: the source is put in the shadow world and the answer contains fake orders. Anything else returns 404. |
+| The shadow world | DynamoDB and `service` | A source that hit a tripwire gets fake orders on every path, the real one included, for 30 minutes. Authorized clients notice nothing. |
+| The analyst | Lambda (`analyst`) | Sends the alarm e-mail. With an LLM connected, the e-mail includes an assessment, and the shadow world gets fake orders written by the LLM. |
+| The map service | Lambda (`map`) | Returns the current path. It can only be reached with your IAM identity, never from the internet. |
+| The alarms | SNS | E-mails you when a source hits a tripwire, with the time window that shows when the path leaked. One e-mail per source, not per request. |
+| The control panel | API Gateway and Lambda (`panel`) | A phone-friendly web page at a secret address. Shows the current path, old paths, a decoy and the shadow world, all one tap away. |
 
-## Kostnad och säkerhetsspärrar
+## Cost and safety limits
 
-Inget ska dra pengar i det tysta. Därför finns de här spärrarna:
+Nothing should cost money silently. That is why these limits exist:
 
-1. **Labyrinten stänger av sig själv efter 2 timmar.** Motorn slutar flytta vägen, API:et börjar avvisa alla anrop, och du får ett mejl om det.
-2. **API:et är strypt till 2 anrop per sekund.** Även om någon skulle hitta adressen och hamra på den kan det inte bli många anrop.
-3. **Budgetlarm, som du lägger till själv.** Det går inte att skapa från mallen i alla regioner. Gå till **Billing and Cost Management**, välj **Budgets**, tryck **Create budget** och välj mallen **Zero spend budget**. Fyll i din e-post och tryck **Create budget**. Du får då ett mejl så fort kontot kostar något alls. Budgetlarm uppdateras några gånger per dygn, så det fungerar som ett skyddsnät, inte som en spärr.
-4. **`./destroy.sh` tar bort allt.** Kör det när du är klar.
+1. **The maze shuts itself down after 2 hours.** The engine stops moving the path, the API starts rejecting every request, and you get an e-mail about it.
+2. **The API is throttled to 2 requests per second.** Even if someone found the address and hammered it, there could not be many requests.
+3. **A budget alarm, which you add yourself.** It cannot be created from the template in every region. Go to **Billing and Cost Management**, choose **Budgets**, tap **Create budget** and pick the **Zero spend budget** template. Enter your e-mail and tap **Create budget**. You then get an e-mail as soon as the account costs anything at all. Budget alarms update a few times a day, so they are a safety net, not a hard stop.
+4. **Deleting the stack removes everything.** Do it when you are done.
 
-Alla delar betalas per användning, och en testrunda gör bara några hundra anrop. Kostnaden blir därför i praktiken noll. Lambda och API Gateway har dessutom gratisnivåer. När du skapar ett nytt AWS-konto kan du få välja en gratisplan med startkrediter, där kontot inte debiteras alls. Kontrollera vad som gäller när du registrerar dig.
+Every part is billed per use, and a test round makes only a few hundred requests, so the cost is effectively zero. Lambda and API Gateway also have free tiers. When you create a new AWS account you may be offered a free plan with starting credits, under which the account is not charged at all. Check what applies when you sign up.
 
-## Installera från mobilen utan att skriva kommandon
+## Install from a phone without typing commands
 
-Allt görs med knappar i AWS-konsolen. Det enda du skriver är ett stacknamn och din e-postadress.
+Everything is done with buttons in the AWS console. The only things you type are a stack name and your e-mail address.
 
-### 1. Skapa ett AWS-konto
+### 1. Create an AWS account
 
-Gå till https://aws.amazon.com och välj att skapa ett konto. Du behöver en e-postadress, ett betalkort och telefonen för verifiering. Välj gratisplanen om du får frågan.
+Go to https://aws.amazon.com and choose to create an account. You need an e-mail address, a payment card and your phone for verification. Choose the free plan if you are asked.
 
-### 2. Ladda ner mallen till mobilen
+### 2. Download the template to your phone
 
-Håll fingret på den här länken och välj **Ladda ned länkad fil**:
+Tap and hold this link and choose **Download Linked File**:
 
 https://github.com/mikaelcarlevigg/cloud-maze/raw/main/aws/template.yaml
 
-Filen hamnar i mappen Hämtade filer.
+The file ends up in your Downloads folder. If that does not work, download the whole repository as a ZIP from https://github.com/mikaelcarlevigg/cloud-maze/archive/refs/heads/main.zip, open it in the Files app to unpack it, and use `aws/template.yaml` from the unpacked folder.
 
-### 3. Installera med CloudFormation
+### 3. Install with CloudFormation
 
-1. Logga in på https://console.aws.amazon.com och välj region uppe till höger, till exempel **Europe (Stockholm)**.
-2. Öppna tjänsten **CloudFormation** (sök på "cloud" i sökfältet).
-3. Tryck **Create stack** och välj **With new resources**.
-4. Välj **Upload a template file**, tryck **Choose file** och välj `template.yaml` från Hämtade filer. Tryck **Next**.
-5. Skriv `cm` som **Stack name** och din e-postadress under **AlarmEmail**. Låt resten vara. Tryck **Next**.
-6. Tryck **Next** igen på nästa sida.
-7. Längst ner: kryssa i rutan **I acknowledge that AWS CloudFormation might create IAM resources** och tryck **Submit**.
-8. Vänta tills stacken visar **CREATE_COMPLETE**. Det tar 2–3 minuter. Dra ner för att uppdatera.
+1. Open https://eu-north-1.console.aws.amazon.com/cloudformation/home?region=eu-north-1#/stacks/create. It goes straight to creating a stack in the Stockholm region. To use another region, change it in the top right.
+2. Choose **Upload a template file**, tap **Choose file** and pick `template.yaml` from Downloads. Tap **Next**.
+3. Enter `cm` as the **Stack name** and your e-mail address under **AlarmEmail**. Make sure there is no space after the address; iPhone sometimes adds one when you pick a suggestion. Leave the rest, or fill in the LLM fields (see [Connect an LLM](#connect-an-llm)). Tap **Next**.
+4. Tap **Next** again on the next page.
+5. At the bottom, tick **I acknowledge that AWS CloudFormation might create IAM resources** and tap **Submit**.
+6. Wait until the stack shows **CREATE_COMPLETE**. It takes 2–3 minutes. Pull down to refresh.
 
-### 4. Bekräfta larmen
+### 4. Confirm the alarms
 
-Öppna mejlet från AWS Notifications och tryck på **Confirm subscription**. Annars kommer inga larm fram.
+Open the e-mail from AWS Notifications and tap **Confirm subscription**. Otherwise no alarms arrive.
 
-### 5. Testa i kontrollpanelen
+### 5. Test in the control panel
 
-Gå till fliken **Outputs** på stacken och tryck på länken vid **PanelUrl**. Spara gärna sidan som bokmärke. Adressen innehåller stackens unika id, så bara du hittar den.
+Go to the stack's **Outputs** tab and tap the link next to **PanelUrl**. Bookmark the page if you like. The address contains the stack's unique id, so only you can find it.
 
-Panelen uppdateras var 15:e sekund och har fyra delar:
+The panel refreshes every 15 seconds and has four parts:
 
-- **Behörig klient:** visar vägen som kartan anger just nu. Tryck på den: du får ordrarna. Vänta två minuter och se att vägen har bytts.
-- **Gamla vägar:** när den första vägen har stängts, efter cirka fyra minuter, dyker den upp här. Tryck på den: svaret ser äkta ut, men ordrarna kommer från andra kunder än Nordvind AB och är falska. Du får ett larmmejl som visar mellan vilka klockslag vägen fanns, alltså när den läckte.
-- **Lockbete:** en väg som aldrig har funnits på någon karta. Den fungerar som en gammal väg.
-- **Skuggvärlden:** när du har tryckt på en gammal väg eller ett lockbete står din IP-adress här, och panelen visar det överst. Tryck då på den behöriga vägen igen: nu får även den falska ordrar. Det är så en angripare upplever det. Efter 30 minuter släpps du ut.
+- **Authorized client:** shows the path the map gives right now. Tap it and you get the orders. Wait two minutes and see that the path has changed.
+- **Old paths:** once the first path has closed, after about four minutes, it shows up here. Tap it: the answer looks real, but the orders come from customers other than Nordvind AB and are fake. You get an alarm e-mail that shows between which times the path existed, which is when it leaked.
+- **Decoy:** a path that was never on any map. It behaves like an old path.
+- **Shadow world:** after you tap an old path or the decoy, your IP address is listed here and the panel says so at the top. Tap the authorized path again: now it gives fake orders too. That is what an attacker experiences. After 30 minutes you are let out.
 
-Gå tillbaka till panelen med webbläsarens bakåtknapp.
+Use the browser's back button to return to the panel.
 
-### 6. Ta bort allt
+### 6. Remove everything
 
-I CloudFormation: välj stacken `cm` och tryck **Delete**. Allt som installerades tas bort.
+In CloudFormation, select the stack `cm` and tap **Delete**. Type the stack name to confirm. Everything that was installed is removed.
 
-## Installera med kommandon i CloudShell
+You do not have to delete it right away: after 2 hours the maze shuts itself down, and what is left sits idle and costs practically nothing. Delete it when you are done, or when you want a new test round, since the maze does not restart on its own.
 
-Föredrar du kommandon kan du installera från AWS CloudShell, terminalfönstret i AWS-konsolen. Då får du också en behörig klient och angriparskript som körs i terminalen.
+## Install with commands in CloudShell
 
-### Öppna CloudShell
+If you prefer commands, you can install from AWS CloudShell, the terminal in the AWS console. That also gives you an authorized client and attacker scripts that run in the terminal.
 
-1. Logga in på https://console.aws.amazon.com.
-2. Välj region uppe till höger, till exempel **Europe (Stockholm)**.
-3. Sök efter **CloudShell** i sökfältet högst upp och öppna det. Första gången tar det någon minut att starta.
+### Open CloudShell
 
-Det går ofta inte att klistra in i CloudShell på en mobil. Därför behöver du bara skriva två korta rader. Resten sköter du med siffror i en meny.
+1. Sign in at https://console.aws.amazon.com.
+2. Pick a region in the top right, for example **Europe (Stockholm)**.
+3. Search for **CloudShell** in the search bar at the top and open it. The first start takes a minute.
 
-### Hämta koden och starta menyn
+Pasting into CloudShell often does not work on a phone. That is why you only have to type two short lines. The rest is done with numbers in a menu.
 
-Skriv de här två raderna och tryck Enter efter var och en:
+### Get the code and start the menu
+
+Type these two lines and press Enter after each:
 
 ```bash
 git clone https://github.com/mikaelcarlevigg/cloud-maze
 cloud-maze/cm
 ```
 
-Menyn ser ut så här:
+The menu looks like this:
 
 ```
 ========== Cloud Maze ==========
-Status: inte installerad
+Account: 123456789012, region eu-north-1
+Status: not installed
 
-  1  Installera
-  2  Kör behörig klient (6 min)
-  3  Angripare: stjäl vägen som gäller nu
-  4  Angripare: angrip med stulen väg
-  5  Angripare: prova lockbete
-  6  Angripare: gissa en väg
-  7  Ta bort allt
-  0  Avsluta menyn
+  1  Install
+  2  Run the authorized client (6 min)
+  3  Attacker: steal the current path
+  4  Attacker: attack with the stolen path
+  5  Attacker: try a decoy
+  6  Attacker: guess a path
+  7  Remove everything
+  0  Exit the menu
 ```
 
-Kommer du tillbaka senare, eller har CloudShell startats om, skriver du bara `cloud-maze/cm` igen.
+If you come back later, or CloudShell has restarted, just type `cloud-maze/cm` again.
 
-### Testa från menyn
+### Test from the menu
 
-1. **Välj 1** och skriv din e-postadress. Installationen tar ett par minuter.
-2. **Öppna mejlet från AWS Notifications och tryck på *Confirm subscription*.** Annars kommer inga larm fram.
-3. **Välj 2.** Den behöriga klienten hämtar kartan med din IAM-identitet och anropar tjänsten var tionde sekund i sex minuter. Du ser hur den byter väg varannan minut utan att något anrop misslyckas.
-4. **Välj 3.** Du stjäl vägen som gäller just nu, som om den hade läckt i en logg. Den fungerar, du får ordrarna.
-5. **Vänta 4–5 minuter.** Menyn visar *STÄNGD* när den stulna vägen har stängts.
-6. **Välj 4.** Svaret ser normalt ut men innehåller inga ordrar. Kolla din e-post: där ligger ett larm som talar om vilken väg som användes, varifrån anropet kom, och mellan vilka klockslag vägen fanns. Det är där läckan skedde.
-7. **Välj 5 och 6.** Ett lockbete larmar på samma sätt. En gissad väg ger bara 404 och inget larm.
-8. **Välj 7** när du är klar. Det tar bort allt som installerades.
+1. **Choose 1** and enter your e-mail address. Installation takes a few minutes.
+2. **Open the e-mail from AWS Notifications and tap *Confirm subscription*.** Otherwise no alarms arrive.
+3. **Choose 2.** The authorized client fetches the map with your IAM identity and calls the service every ten seconds for six minutes. You see it switch paths every two minutes without a single request failing.
+4. **Choose 3.** You steal the path that is current right now, as if it had leaked in a log. It works, and you get the orders.
+5. **Wait 4–5 minutes.** The menu shows *CLOSED* once the stolen path has closed.
+6. **Choose 4.** The answer looks normal, but the orders are fake. Check your e-mail: there is an alarm that tells you which path was used, where the request came from, and between which times the path existed. That is when the leak happened.
+7. **Choose 5 and 6.** A decoy alarms the same way. A guessed path just returns 404 and no alarm.
+8. **Choose 7** when you are done. It removes everything that was installed.
 
-Du kan också öppna den stulna adressen i mobilens webbläsare. Den skrivs ut när du väljer 3.
+CloudShell has a single IP address, so after step 4 the authorized client in the same CloudShell is in the shadow world too. The client points out when it gets fake orders.
 
-Föredrar du kommandon framför menyn finns skripten `deploy.sh`, `client.sh`, `attacker.sh` och `destroy.sh` i samma mapp.
+You can also open the stolen address in your phone's browser. It is printed when you choose 3.
 
-## Koppla på en LLM
+If you prefer commands to the menu, the scripts `deploy.sh`, `client.sh`, `attacker.sh` and `destroy.sh` are in the same folder.
 
-Cloud Maze fungerar utan LLM. Om du kopplar på en gör den två saker:
+## Connect an LLM
 
-1. **Bedömer larmet.** Larmmejlet får en kort analys på svenska: vad som hände, hur allvarligt det är och vad du bör göra.
-2. **Skriver skuggvärlden.** Den skapar trovärdiga falska ordrar som angripare i skuggvärlden får se.
+Cloud Maze works without an LLM. If you connect one, it does two things:
 
-Du kan använda vilken leverantör som helst som har ett OpenAI-kompatibelt API, vilket de flesta har. Du fyller i tre fält när du skapar stacken:
+1. **Assesses the alarm.** The alarm e-mail gets a short analysis: what happened, how serious it is and what you should do.
+2. **Writes the shadow world.** It creates convincing fake orders that attackers in the shadow world get to see.
 
-| Fält | Groq | Annan leverantör |
+You can use any provider with an OpenAI-compatible API, which most have. You fill in three fields when you create the stack:
+
+| Field | Groq | Other provider |
 | --- | --- | --- |
-| **LlmBaseUrl** | `https://api.groq.com/openai/v1` | Leverantörens OpenAI-kompatibla adress, till exempel `https://api.openai.com/v1` eller `https://api.mistral.ai/v1` |
-| **LlmModel** | `llama-3.3-70b-versatile` | Ett modellnamn från leverantörens lista |
-| **LlmApiKey** | Din nyckel från Groq | Din nyckel från leverantören |
+| **LlmBaseUrl** | `https://api.groq.com/openai/v1` | The provider's OpenAI-compatible address, for example `https://api.openai.com/v1` or `https://api.mistral.ai/v1` |
+| **LlmModel** | `llama-3.3-70b-versatile` | A model name from the provider's list |
+| **LlmApiKey** | Your key from Groq | Your key from the provider |
 
-Lämnar du fälten tomma körs allt utan LLM, och mejlen innehåller bara fakta.
+If you leave the fields empty, everything runs without an LLM and the e-mails contain only the facts.
 
-Installerar du med `deploy.sh` i CloudShell anger du adress och modell framför kommandot. Skriptet frågar sedan efter nyckeln:
-
-```bash
-LLM_BASE_URL=https://api.groq.com/openai/v1 LLM_MODEL=llama-3.3-70b-versatile ./deploy.sh din@epost.se
-```
-
-### Så får du en nyckel från Groq
-
-1. Logga in på https://console.groq.com.
-2. Välj **API Keys** och **Create API Key**.
-3. Kopiera nyckeln och klistra in den i fältet **LlmApiKey** när du skapar stacken. Formulär i webbläsaren går bra att klistra in i, till skillnad från CloudShell.
-
-Kontrollera också att modellnamnet finns i Groqs modellista, eftersom utbudet ändras.
-
-### Säkerhet och kostnad
-
-- **LLM:en bestämmer ingenting.** Den har inga verktyg och kan inte öppna vägar, stänga av larm eller släppa ut någon ur skuggvärlden. Fakta i mejlet, som väg, IP-adress och tidsfönster, kommer alltid från koden. LLM:ens text läggs till under.
-- **Angriparens data är bara data.** Sådant som angriparen styr, till exempel user-agent, skickas till LLM:en med en tydlig instruktion om att det är data och inte instruktioner. Även om någon lyckas lura modellen kan det bara påverka texten i mejlet.
-- **De falska ordrarna kontrolleras.** Bara fält med rätt typ och rimliga värden sparas. Allt annat kastas.
-- **Tak för antal anrop.** Högst 20 LLM-anrop per timme (`LlmMaxCallsPerHour`). LLM:en anropas bara när en ny källa går i en snubbeltråd, inte vid varje anrop.
-- **Om LLM:en inte svarar** går mejlet ut ändå, med en rad om felet.
-- **Nyckeln** döljs i CloudFormation-formuläret men sparas som miljövariabel på funktionen `analyst`. Den syns för den som har administratörsåtkomst till ditt konto. För produktion bör nyckeln ligga i AWS Secrets Manager. Det kostar en liten summa varje månad, och därför är det inte förvalt här.
-
-## Egna inloggningsuppgifter
-
-Allt installeras i det AWS-konto du är inloggad i. Hur du loggar in beror på var du kör:
-
-- **CloudFormation-konsolen** (installationen med knappar ovan): du är inloggad via webbläsaren. Inga nycklar behövs.
-- **AWS CloudShell:** du är redan inloggad som den användare du loggade in i konsolen med. Inga nycklar behövs.
-- **Din egen dator:** installera [AWS CLI](https://aws.amazon.com/cli/). Har du redan kört `aws configure` används de uppgifterna. Annars frågar skripten efter dina nycklar när du startar dem.
-
-Nycklar som du skriver in när skripten frågar gäller bara så länge skriptet körs. De sparas aldrig på disk eller i repot. Ditt hemliga värde syns inte när du skriver.
-
-Innan något installeras visar skriptet vilket konto och vilken region det gäller, och du måste skriva `j` för att fortsätta. Om ingen region är vald föreslås `eu-north-1` (Stockholm). Klienten och angriparskripten kontrollerar dessutom att du är inloggad i samma konto som labyrinten installerades i.
-
-### Så skapar du nycklar
-
-1. Logga in i AWS-konsolen och öppna **IAM**.
-2. Välj **Users** och **Create user**. Använd inte root-användarens nycklar.
-3. Ge användaren behörighet. För ett test är **AdministratorAccess** enklast, eftersom stacken skapar roller, funktioner, en tabell och ett API.
-4. Öppna användaren, gå till **Security credentials** och välj **Create access key** med användningsområdet **Command Line Interface (CLI)**.
-5. Spara **Access key ID** och **Secret access key**. Det hemliga värdet visas bara en gång.
-
-Ta bort nyckeln, eller hela användaren, när du har testat klart. Lägg aldrig nycklar i kod, i repot eller i chattar.
-
-Har du tillfälliga nycklar, till exempel från AWS IAM Identity Center, fyller du också i **session token** när skriptet frågar.
-
-## Inställningar
+If you install with `deploy.sh` in CloudShell, put the address and model in front of the command. The script then asks for the key:
 
 ```bash
-./deploy.sh din@epost.se 5     # flytta vägen var 5:e minut i stället för varannan
+LLM_BASE_URL=https://api.groq.com/openai/v1 LLM_MODEL=llama-3.3-70b-versatile ./deploy.sh you@example.com
 ```
 
-Hur länge labyrinten körs (`RunHours`) väljer du när du skapar stacken, eller i `template.yaml`. Labyrinten startar inte om av sig själv efter att den har stängts av. Kör `./destroy.sh` och sedan `./deploy.sh` igen.
+### Getting a key from Groq
 
-## Skillnader mot konceptet
+1. Sign in at https://console.groq.com.
+2. Choose **API Keys** and **Create API Key**.
+3. Copy the key and paste it into the **LlmApiKey** field when you create the stack. Pasting into forms in the browser works fine, unlike in CloudShell.
 
-Fas 1 visar kärnan: vägen flyttas med överlapp, behöriga hittar rätt via kartan, och gamla vägar och lockbeten larmar. Det här saknas än:
+Also check that the model name is in Groq's model list, since the selection changes.
 
-- **Väg-kontrollen görs i Lambda.** I konceptet stoppar CloudFront och WAF gamla vägar redan vid kanten.
-- **Kartan är inte signerad.** IAM skyddar den, men KMS-signering ingår inte än.
-- **Bara adressen flyttas.** Nycklar och tillåtna källadresser roterar inte.
-- **Tjänsten saknar egen inloggning.** I verkligheten är Cloud Maze ett lager ovanpå vanlig autentisering.
-- **Larmen går som mejl.** En riktig version skulle samla dem i Security Hub.
-- **Skuggvärlden känner igen källor på IP-adress.** Flera användare bakom samma IP-adress, till exempel på ett kontor eller i CloudShell, hamnar där tillsammans.
+### Security and cost
+
+- **The LLM decides nothing.** It has no tools and cannot open paths, turn off alarms or release anyone from the shadow world. The facts in the e-mail, such as path, IP address and time window, always come from the code. The LLM's text is added below them.
+- **Attacker data is only data.** Things the attacker controls, such as the user agent, are sent to the LLM with a clear instruction that they are data, not instructions. Even if someone manages to trick the model, they can only influence the text of the e-mail.
+- **The fake orders are checked.** Only fields with the right type and reasonable values are kept. Everything else is discarded.
+- **A cap on calls.** At most 20 LLM calls per hour (`LlmMaxCallsPerHour`). The LLM is only called when a new source hits a tripwire, not on every request.
+- **If the LLM does not answer**, the e-mail goes out anyway, with a line about the error.
+- **The key** is hidden in the CloudFormation form but stored as an environment variable on the `analyst` function. Anyone with administrator access to your account can see it. In production the key belongs in AWS Secrets Manager. That costs a small amount every month, which is why it is not the default here.
+
+## Your own credentials
+
+Everything is installed in the AWS account you are signed in to. How you sign in depends on where you run it:
+
+- **The CloudFormation console** (the button-based install above): you are signed in through the browser. No keys are needed.
+- **AWS CloudShell:** you are already signed in as the user you used for the console. No keys are needed.
+- **Your own computer:** install the [AWS CLI](https://aws.amazon.com/cli/). If you have already run `aws configure`, those credentials are used. Otherwise the scripts ask for your keys when you start them.
+
+Keys you type when the scripts ask are only used while the script runs. They are never saved to disk or to the repository. The secret is not shown as you type.
+
+Before anything is installed, the script shows which account and region it will use, and you must type `y` to continue. If no region is set, `eu-north-1` (Stockholm) is suggested. The client and attacker scripts also check that you are signed in to the same account the maze was installed in.
+
+### Creating keys
+
+1. Sign in to the AWS console and open **IAM**.
+2. Choose **Users** and **Create user**. Do not use the root user's keys.
+3. Give the user permissions. For a test, **AdministratorAccess** is simplest, since the stack creates roles, functions, a table and an API.
+4. Open the user, go to **Security credentials** and choose **Create access key** with the use case **Command Line Interface (CLI)**.
+5. Save the **Access key ID** and **Secret access key**. The secret is shown only once.
+
+Delete the key, or the whole user, when you are done testing. Never put keys in code, in the repository or in chats.
+
+If you have temporary keys, for example from AWS IAM Identity Center, also fill in the **session token** when the script asks.
+
+## Settings
+
+```bash
+./deploy.sh you@example.com 5     # move the path every 5 minutes instead of every 2
+```
+
+How long the maze runs (`RunHours`) and how long a source stays in the shadow world (`ShadowMinutes`) are chosen when you create the stack, or in `template.yaml`. The maze does not restart on its own after it has shut down. Delete the stack and create it again.
+
+## Differences from the concept
+
+Phase 1 shows the core: the path moves with overlap, the authorized find their way through the map, and old paths and decoys raise alarms and lead into the shadow world. This is still missing:
+
+- **The path check happens in Lambda.** In the concept, CloudFront and WAF stop old paths at the edge.
+- **The map is not signed.** IAM protects it, but KMS signing is not included yet.
+- **Only the address moves.** Keys and allowed source addresses do not rotate.
+- **The service has no login of its own.** In reality Cloud Maze is a layer on top of ordinary authentication.
+- **Alarms go out by e-mail.** A real version would collect them in Security Hub.
+- **The shadow world recognizes sources by IP address.** Several users behind the same IP address, such as in an office or in CloudShell, end up there together.

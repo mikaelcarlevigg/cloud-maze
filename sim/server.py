@@ -27,7 +27,7 @@ from maze import Engine, Maze
 
 ORDERS = [
     {"id": "A-1001", "customer": "Nordvind AB", "amount_sek": 12400},
-    {"id": "A-1002", "customer": "Fjällkraft AB", "amount_sek": 3150},
+    {"id": "A-1002", "customer": "Fjallkraft AB", "amount_sek": 3150},
 ]
 MAX_CLOCK_SKEW = 30
 
@@ -126,8 +126,8 @@ def main() -> None:
     map_key = secrets.token_hex(16)
 
     def show_alarm(e: dict) -> None:
-        text = {"old_path": "gammal väg", "decoy": "lockbete", "map_denied": "nekad karta"}[e["kind"]]
-        print(f"  LARM    {text:<12} väg {e['path']}  från {e['source']}", flush=True)
+        text = {"old_path": "old path", "decoy": "decoy", "map_denied": "map denied"}[e["kind"]]
+        print(f"  ALARM   {text:<12} path {e['path']}  from {e['source']}", flush=True)
 
     server = CloudMazeServer(("127.0.0.1", args.port), maze, {"partner-1": bytes.fromhex(client_key)},
                              bytes.fromhex(map_key), on_alarm=show_alarm)
@@ -135,21 +135,21 @@ def main() -> None:
 
     def show_move(kind: str, path) -> None:
         if kind == "opened":
-            print(f"  ÖPPNAD  {base}/v1/{path.id}/orders", flush=True)
+            print(f"  OPENED  {base}/v1/{path.id}/orders", flush=True)
         else:
-            print(f"  STÄNGD  /v1/{path.id}/orders  (nu en snubbeltråd)", flush=True)
+            print(f"  CLOSED  /v1/{path.id}/orders  (now a tripwire)", flush=True)
 
     Engine(maze, show_move).start()
-    print(f"Cloud Maze körs på {base}")
-    print(f"Väg just nu:  {base}/v1/{maze.current.id}/orders")
-    print(f"Lockbeten:    {', '.join(sorted(maze.decoys))}")
-    print("\nKör en behörig klient i ett annat fönster:")
+    print(f"Cloud Maze is running at {base}")
+    print(f"Current path: {base}/v1/{maze.current.id}/orders")
+    print(f"Decoys:       {', '.join(sorted(maze.decoys))}")
+    print("\nRun an authorized client in another window:")
     print(f"  python3 client.py --url {base} --client partner-1 --key {client_key} --map-key {map_key}")
-    print("\nProva att vara angripare: kopiera en väg nu, vänta tills den stängts och kör curl mot den.\n", flush=True)
+    print("\nTry being the attacker: copy a path now, wait until it has closed and run curl against it.\n", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nAvslutar.")
+        print("\nStopping.")
 
 
 if __name__ == "__main__":
