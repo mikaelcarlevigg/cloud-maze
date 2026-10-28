@@ -111,6 +111,14 @@ Stängda vägar försvinner inte helt. De övervakas. Dessutom planterar Cloud M
 
 Eftersom behöriga klienter aldrig rör sådant blir det nästan inga falsklarm. Ett larm betyder i praktiken att någon använder information som de inte borde ha, eller som har läckt.
 
+### Skuggvärlden: angriparen får en egen labyrint
+
+En källa som har gått i en snubbeltråd släpps inte bara förbi med ett tomt svar. Den hamnar i en skuggvärld. Där fungerar alla vägar, även den riktiga, men allt angriparen får se är falskt. Angriparen tror att den har lyckats och lägger tid på data som inte finns, medan varje steg den tar visar vad den letar efter. Behöriga klienter påverkas inte, eftersom de aldrig går i snubbeltrådarna.
+
+### En LLM för innehåll och analys, inte för beslut
+
+En LLM kan kopplas på för att skriva trovärdigt innehåll till skuggvärlden och för att bedöma larmen i klartext. Själva labyrinten styrs av regler. Garantin att behöriga alltid har en väg in ska inte bero på en språkmodell, och en angripare som försöker lura modellen ska som mest kunna påverka en text. Vilken LLM som helst med ett OpenAI-kompatibelt API fungerar, till exempel Groq.
+
 ## 5. Arkitektur på AWS
 
 ```mermaid
