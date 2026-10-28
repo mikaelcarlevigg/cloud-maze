@@ -38,7 +38,7 @@ Gå till https://aws.amazon.com och välj att skapa ett konto. Du behöver en e-
 
 Håll fingret på den här länken och välj **Ladda ned länkad fil**:
 
-https://github.com/mikaelcarlevigg/cloud-maze/raw/claude/cloud-maze-concept-xvvzwy/aws/template.yaml
+https://github.com/mikaelcarlevigg/cloud-maze/raw/main/aws/template.yaml
 
 Filen hamnar i mappen Hämtade filer.
 
@@ -94,8 +94,6 @@ git clone https://github.com/mikaelcarlevigg/cloud-maze
 cloud-maze/cm
 ```
 
-`git clone` hämtar koden från `main`. Om pull requesten med Cloud Maze inte är inslagen än, lägg till grenens namn: `git clone -b claude/cloud-maze-concept-xvvzwy https://github.com/mikaelcarlevigg/cloud-maze`.
-
 Menyn ser ut så här:
 
 ```
@@ -128,6 +126,30 @@ Kommer du tillbaka senare, eller har CloudShell startats om, skriver du bara `cl
 Du kan också öppna den stulna adressen i mobilens webbläsare. Den skrivs ut när du väljer 3.
 
 Föredrar du kommandon framför menyn finns skripten `deploy.sh`, `client.sh`, `attacker.sh` och `destroy.sh` i samma mapp.
+
+## Egna inloggningsuppgifter
+
+Allt installeras i det AWS-konto du är inloggad i. Hur du loggar in beror på var du kör:
+
+- **CloudFormation-konsolen** (installationen med knappar ovan): du är inloggad via webbläsaren. Inga nycklar behövs.
+- **AWS CloudShell:** du är redan inloggad som den användare du loggade in i konsolen med. Inga nycklar behövs.
+- **Din egen dator:** installera [AWS CLI](https://aws.amazon.com/cli/). Har du redan kört `aws configure` används de uppgifterna. Annars frågar skripten efter dina nycklar när du startar dem.
+
+Nycklar som du skriver in när skripten frågar gäller bara så länge skriptet körs. De sparas aldrig på disk eller i repot. Ditt hemliga värde syns inte när du skriver.
+
+Innan något installeras visar skriptet vilket konto och vilken region det gäller, och du måste skriva `j` för att fortsätta. Om ingen region är vald föreslås `eu-north-1` (Stockholm). Klienten och angriparskripten kontrollerar dessutom att du är inloggad i samma konto som labyrinten installerades i.
+
+### Så skapar du nycklar
+
+1. Logga in i AWS-konsolen och öppna **IAM**.
+2. Välj **Users** och **Create user**. Använd inte root-användarens nycklar.
+3. Ge användaren behörighet. För ett test är **AdministratorAccess** enklast, eftersom stacken skapar roller, funktioner, en tabell och ett API.
+4. Öppna användaren, gå till **Security credentials** och välj **Create access key** med användningsområdet **Command Line Interface (CLI)**.
+5. Spara **Access key ID** och **Secret access key**. Det hemliga värdet visas bara en gång.
+
+Ta bort nyckeln, eller hela användaren, när du har testat klart. Lägg aldrig nycklar i kod, i repot eller i chattar.
+
+Har du tillfälliga nycklar, till exempel från AWS IAM Identity Center, fyller du också i **session token** när skriptet frågar.
 
 ## Inställningar
 

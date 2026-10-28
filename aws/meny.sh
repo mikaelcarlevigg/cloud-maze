@@ -2,6 +2,10 @@
 # En meny för mobilen: allt görs genom att skriva en siffra.
 set -uo pipefail
 cd "$(dirname "$0")"
+source credentials.sh
+if [ -f .cloudmaze.env ]; then source .cloudmaze.env; [ -n "${REGION:-}" ] && export AWS_REGION="$REGION"; fi
+# Ask once here, so the steps below reuse the same login.
+ensure_aws_credentials || exit 1
 
 stolen_status() {
   [ -f .cloudmaze.env ] && [ -f .stolen-url ] || return 0
@@ -20,6 +24,7 @@ stolen_status() {
 while true; do
   echo
   echo "========== Cloud Maze =========="
+  echo "Konto: $AWS_ACCOUNT_ID, region $(aws_region)"
   if [ -f .cloudmaze.env ]; then echo "Status: installerad"; stolen_status; else echo "Status: inte installerad"; fi
   echo
   echo "  1  Installera"
