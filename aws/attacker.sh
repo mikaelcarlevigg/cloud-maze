@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Play the attacker.
-#   ./attacker.sh steal    Steals the current path, as if it had leaked in a log
+#   ./attacker.sh steal    Steals a full request to the current path, pass included, as if it had leaked in a log
 #   ./attacker.sh attack   Attacks with the stolen path
 #   ./attacker.sh decoy    Tries a path from a leaked config file (a planted decoy)
 #   ./attacker.sh guess    Guesses a path
@@ -29,13 +29,13 @@ hit() {
 
 case "${1:-}" in
   steal)
-    url="$API/v1/$(state Item.current.S)/orders"
+    url="$API/v1/$(state Item.current.S)/orders?pass=$(state Item.currentPass.S)"
     echo "$url" > "$STOLEN"
     echo "You have stolen: $url"
     echo
     hit "$url"
     echo
-    echo "The path works now. Wait at least two moves (4-5 minutes with the default setting)"
+    echo "The stolen request works now. Wait at least two moves (4-5 minutes with the default setting)"
     echo "and then run:  ./attacker.sh attack"
     echo "You can also open the address in your phone's browser later."
     ;;

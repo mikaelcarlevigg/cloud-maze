@@ -36,7 +36,7 @@ The AWS version shuts itself down after two hours and costs practically nothing 
 
 ## What it does
 
-- **The path rotates.** `/v1/k7f2q9/orders` becomes `/v1/m3x8a1/orders` on a schedule. Authorized clients fetch a map through IAM, and an overlap keeps both paths open while they switch, so nobody gets locked out.
+- **The path rotates.** `/v1/k7f2q9/orders` becomes `/v1/m3x8a1/orders` on a schedule. Authorized clients fetch a map and a pass through IAM, and an overlap keeps both paths open while they switch, so nobody gets locked out. The pass also keeps them out of the shadow world, even on a shared IP address.
 - **Old paths become tripwires.** Authorized clients never use them, so a hit is a strong signal. The alarm says when the path existed, which is when the information leaked.
 - **Attackers land in a shadow world.** Every path they call works, the real one included, but the data is fake. Everyone else still gets the real service.
 - **Marked keys follow them.** The fake data includes a fake API key made for that attacker. It is recognized within seconds from any IP address.
@@ -405,6 +405,7 @@ Packaged installation through AWS CloudFormation or CDK, an overview of the maze
 | **Overlap** | The time when both the old and the new path work, so no authorized client is locked out |
 | **Tripwire** | A closed path or a decoy that raises an alarm when someone uses it |
 | **Shadow world** | Where a source that hit a tripwire ends up: every path works, but all data is fake |
+| **Pass** | A secret that the map hands out with each path. Authorized clients send it with every request, and it always gets them the real service. |
 | **Marked key** | A fake API key handed out in the shadow world, made for one source, that gives the attacker away wherever it is used |
 | **Half-life** | How long information about the system stays useful to an attacker |
 | **mTLS** | Mutual TLS, where both client and server present certificates |
