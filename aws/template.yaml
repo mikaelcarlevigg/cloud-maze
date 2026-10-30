@@ -45,12 +45,18 @@ Parameters:
     Default: 20
     MinValue: 0
     MaxValue: 200
+  AlarmMaxPerHour:
+    Type: Number
+    Description: Upper limit for alarm e-mails per hour, so an attacker with many IP addresses cannot flood your inbox. Alarms over the limit are still logged.
+    Default: 30
+    MinValue: 1
+    MaxValue: 1000
 
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label: { default: Cloud Maze }
-        Parameters: [AlarmEmail, IntervalMinutes, RunHours, ShadowMinutes]
+        Parameters: [AlarmEmail, IntervalMinutes, RunHours, ShadowMinutes, AlarmMaxPerHour]
       - Label: { default: "LLM (optional, any OpenAI-compatible API)" }
         Parameters: [LlmBaseUrl, LlmModel, LlmApiKey, LlmMaxCallsPerHour]
 
@@ -334,7 +340,7 @@ Resources:
               if path in closed or path in item.get("decoys", []):
                   key = "cm_live_" + secrets.token_hex(12)
                   table.put_item(Item={"pk": "k#" + key, "source": source, "issued": now,
-                                       "path": path, "uses": 0})
+                                       "path": path, "uses": 0, "expires": now + 30 * 86400})
                   table.put_item(Item={"pk": "q#" + source, "since": now, "path": path, "hits": 1,
                                        "key": key, "expires": now + SHADOW_SECONDS})
                   report = {"kind": "old_path" if path in closed else "decoy", "path": path,
@@ -395,10 +401,11 @@ Resources:
           LLM_MODEL: !Ref LlmModel
           LLM_API_KEY: !Ref LlmApiKey
           LLM_MAX_PER_HOUR: !Sub "${LlmMaxCallsPerHour}"
+          ALARM_MAX_PER_HOUR: !Sub "${AlarmMaxPerHour}"
           SHADOW_MINUTES: !Sub "${ShadowMinutes}"
       Code:
         ZipFile: |
-          import json, os, time, urllib.request, boto3
+          import json, os, re, time, urllib.request, boto3
           from datetime import datetime, timezone
 
           table = boto3.resource("dynamodb").Table(os.environ["TABLE"])
@@ -409,18 +416,20 @@ Resources:
           def utc(ts):
               return datetime.fromtimestamp(int(ts), timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-          def allowed():
-              # Caps LLM calls per hour, so tripwire hits cannot run up a bill.
+          def allowed(name, limit):
+              # Hourly caps, so tripwire hits cannot run up a bill or flood the inbox.
               hour = int(time.time() // 3600)
               try:
                   table.update_item(
-                      Key={"pk": f"llm#{hour}"}, UpdateExpression="ADD calls :one SET expires = :exp",
+                      Key={"pk": f"{name}#{hour}"}, UpdateExpression="ADD calls :one SET expires = :exp",
                       ConditionExpression="attribute_not_exists(calls) OR calls < :max",
-                      ExpressionAttributeValues={":one": 1, ":exp": (hour + 2) * 3600,
-                                                 ":max": int(os.environ["LLM_MAX_PER_HOUR"])})
+                      ExpressionAttributeValues={":one": 1, ":exp": (hour + 2) * 3600, ":max": int(limit)})
                   return True
               except table.meta.client.exceptions.ConditionalCheckFailedException:
                   return False
+
+          def llm_allowed():
+              return allowed("llm", os.environ["LLM_MAX_PER_HOUR"])
 
           def llm(system, user):
               # Any OpenAI-compatible chat completions API: Groq, OpenAI, Mistral, OpenRouter ...
@@ -474,19 +483,31 @@ Resources:
               return subject, lines
 
           def handler(report, context):
+              topic = os.environ["TOPIC"]
+              sns = boto3.client("sns")
+              if not allowed("mail", os.environ["ALARM_MAX_PER_HOUR"]):
+                  print(json.dumps({"suppressed": report}))
+                  if allowed("mailcap", 1):
+                      sns.publish(TopicArn=topic, Subject="Cloud Maze: alarm limit reached", Message=(
+                          f"More than {os.environ['ALARM_MAX_PER_HOUR']} alarms this hour. Many sources are "
+                          "hitting tripwires at once. Further alarms this hour are only logged, in the "
+                          "log group of the service function."))
+                  return
               subject, lines = facts(report)
               if not (BASE and MODEL and KEY):
                   lines.append("\nLLM: off.")
               else:
                   try:
-                      if not table.get_item(Key={"pk": "shadow#orders"}).get("Item") and allowed():
+                      if not table.get_item(Key={"pk": "shadow#orders"}).get("Item") and llm_allowed():
                           make_fake_orders()
-                      text = analysis(report) if allowed() else "Skipped: hourly limit reached."
+                      text = analysis(report) if llm_allowed() else "Skipped: hourly limit reached."
                   except Exception as error:
                       text = f"Failed: {type(error).__name__}: {error}"[:300]
+                  # An attacker can steer the model through the event. Links in its text could be
+                  # phishing aimed at you, so they are removed.
+                  text = re.sub(r"(?i)\b(?:https?://|www\.)\S+", "[link removed]", text)
                   lines.append(f"\nAnalysis from {MODEL}:\n{text}")
-              boto3.client("sns").publish(TopicArn=os.environ["TOPIC"], Subject=subject,
-                                          Message="\n".join(lines))
+              sns.publish(TopicArn=topic, Subject=subject, Message="\n".join(lines))
 
   AnalystLogs:
     Type: AWS::Logs::LogGroup
@@ -673,8 +694,14 @@ Resources:
               left = int(item["opened"]) + int(os.environ["INTERVAL"]) * 60 - now
               cur = item["current"]
               closed = sorted(item.get("closed", {}).items(), key=lambda kv: -kv[1]["c"])[:5]
-              found = table.scan(FilterExpression="begins_with(pk, :q) OR begins_with(pk, :k)",
-                                 ExpressionAttributeValues={":q": "q#", ":k": "k#"})["Items"]
+              found, page = [], {}
+              for _ in range(10):  # At most 10 pages, so a flooded table cannot make the panel slow.
+                  page = table.scan(FilterExpression="begins_with(pk, :q) OR begins_with(pk, :k)",
+                                    ExpressionAttributeValues={":q": "q#", ":k": "k#"},
+                                    **({"ExclusiveStartKey": page["LastEvaluatedKey"]} if page else {}))
+                  found += page["Items"]
+                  if "LastEvaluatedKey" not in page:
+                      break
               shadow = [q for q in found if q["pk"].startswith("q#") and int(q["expires"]) > now]
               marked = sorted((k for k in found if k["pk"].startswith("k#")), key=lambda k: -k["issued"])[:5]
               keys = "".join(

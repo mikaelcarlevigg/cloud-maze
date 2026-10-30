@@ -26,6 +26,7 @@ Nothing should cost money silently. That is why these limits exist:
 2. **The API is throttled to 2 requests per second.** Even if someone found the address and hammered it, there could not be many requests.
 3. **A budget alarm, which you add yourself.** It cannot be created from the template in every region. Go to **Billing and Cost Management**, choose **Budgets**, tap **Create budget** and pick the **Zero spend budget** template. Enter your e-mail and tap **Create budget**. You then get an e-mail as soon as the account costs anything at all. Budget alarms update a few times a day, so they are a safety net, not a hard stop.
 4. **Deleting the stack removes everything.** Do it when you are done.
+5. **Alarm e-mails are capped at 30 per hour** (`AlarmMaxPerHour`), and LLM calls at 20 per hour (`LlmMaxCallsPerHour`). An attacker with many IP addresses cannot flood your inbox or run up an LLM bill. When the alarm cap is hit you get one e-mail saying so, and further alarms that hour are only logged.
 
 Every part is billed per use, and a test round makes only a few hundred requests, so the cost is effectively zero. Lambda and API Gateway also have free tiers. When you create a new AWS account you may be offered a free plan with starting credits, under which the account is not charged at all. Check what applies when you sign up.
 
@@ -216,6 +217,26 @@ The tests read the code straight from `template.yaml`, so they always test what 
 ```
 
 How long the maze runs (`RunHours`) and how long a source stays in the shadow world (`ShadowMinutes`) are chosen when you create the stack, or in `template.yaml`. The maze does not restart on its own after it has shut down. Delete the stack and create it again.
+
+## Security review
+
+This section lists what an attacker could exploit in this prototype, found by reviewing it as an attacker would. The first four were fixed; the rest are limits of the prototype that a real deployment has to solve.
+
+**Fixed**
+
+- **Inbox flooding.** An attacker with many IP addresses could trigger one alarm e-mail per address. Alarm e-mails are now capped per hour.
+- **Phishing links through the LLM.** An attacker can put text in the user agent that steers the LLM, for example to add a link to a fake login page in the e-mail to you. Links are now removed from the LLM's text. The facts above it always come from the code.
+- **A table that only grows.** Marked keys were kept forever. They now expire after 30 days.
+- **An incomplete panel.** With many entries, the panel only read the first page of the table. It now follows up to ten pages.
+
+**Known limits**
+
+- **The throttle can be used against you.** The limit of 2 requests per second applies to the whole API, not per source. That protects your bill, but an attacker who sends more than that can make authorized clients get errors. A real deployment needs per-IP rate limits, for example a rate-based rule in AWS WAF, which has a fixed monthly cost.
+- **Shared IP addresses.** The shadow world recognizes sources by IP address. An authorized client behind the same address as an attacker, such as in an office, a VPN or a mobile network that shares addresses, also gets fake data, without noticing. A real deployment should have authorized clients sign their requests to the service and only send unsigned requests into the shadow world.
+- **The deception can be spotted.** An attacker who saw the real orders before the path closed will notice that the customers change. The `meta` field with the marked key only appears in fake answers, and unknown paths and unknown routes answer with slightly different error messages. A careful attacker can use such differences to tell the shadow world from the real service.
+- **The alarm cap is also a blind spot.** An attacker who first triggers many alarms can hide a later, targeted one in the same hour. It is still in the logs, but not in your inbox.
+- **The panel address is a key.** Anyone with the panel address can see the current path, which is the map. Do not share it or show it in screenshots.
+- **The service has no login of its own,** and the LLM key is stored as an environment variable. Both are described elsewhere in this guide.
 
 ## Differences from the concept
 
