@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- Source of docs/images/social-preview.png, the repository's social preview. Render at 1280 x 640. -->
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap">
+<style>
+  :root { --bg:#0f1520; --panel:#182131; --ink:#e8edf5; --muted:#98a4b8; --accent:#7fa2ff; --alarm:#ff9d5c; --ok:#5fd39a; }
+  * { box-sizing: border-box; }
+  body { margin:0; width:1280px; height:640px; background: radial-gradient(1100px 700px at 85% 10%, #1b2a48 0%, var(--bg) 60%); color:var(--ink);
+         font-family:"IBM Plex Sans", system-ui, sans-serif; overflow:hidden; position:relative; }
+  .grid { position:absolute; inset:0; background-image: linear-gradient(rgba(127,162,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(127,162,255,.06) 1px, transparent 1px);
+          background-size: 48px 48px; }
+  .text { position:absolute; left:64px; top:56px; width:560px; }
+  .eyebrow { font:600 18px "IBM Plex Mono", monospace; color:var(--accent); letter-spacing:.06em; text-transform:uppercase; }
+  h1 { font-size:72px; line-height:1; margin:14px 0 18px; font-weight:700; letter-spacing:-.02em; }
+  .lede { font-size:28px; line-height:1.3; color:var(--ink); margin:0 0 30px; }
+  .lede em { font-style:normal; color:var(--alarm); }
+  ul { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:12px; }
+  li { font-size:21px; line-height:1.3; color:var(--muted); padding-left:40px; position:relative; }
+  li b { color:var(--ink); font-weight:600; }
+  li::before { content:""; position:absolute; left:0; top:9px; width:14px; height:14px; border-radius:4px; background:var(--accent); }
+  li.alarm::before { background:var(--alarm); }
+  li.ok::before { background:var(--ok); }
+  .path { position:absolute; left:64px; bottom:84px; font:500 20px "IBM Plex Mono", monospace; color:var(--muted); }
+  .path s { color:#5d6a80; } .path span { color:var(--accent); }
+  .foot { position:absolute; left:64px; bottom:44px; font:500 18px "IBM Plex Mono", monospace; color:var(--muted); }
+  .phone { position:absolute; width:300px; border-radius:36px; overflow:hidden; border:10px solid #2a3548; box-shadow: 0 40px 80px rgba(0,0,0,.55); background:#fff; }
+  .phone img { display:block; width:100%; }
+  .p1 { left:720px; top:70px; height:640px; transform: rotate(-4deg); }
+  .p2 { left:975px; top:150px; height:640px; transform: rotate(5deg); }
+  .tag { position:absolute; font:600 20px "IBM Plex Sans"; padding:10px 18px; border-radius:999px; }
+  .t1 { left:640px; top:910px; background:var(--panel); color:var(--ink); border:1px solid #2a3548; }
+  .t2 { left:890px; top:1040px; background:var(--panel); color:var(--ink); border:1px solid #2a3548; }
+</style></head>
+<body>
+  <div class="grid"></div>
+  <div class="text">
+    <div class="eyebrow">Open source · AWS</div>
+    <h1>Cloud Maze</h1>
+    <p class="lede">Your API moves every two minutes. Attackers <em>walk into a maze.</em></p>
+    <ul>
+      <li><b>Old paths become tripwires</b> that show when they leaked</li>
+      <li class="alarm"><b>Attackers land in a shadow world</b> of fake data</li>
+      <li class="ok"><b>Marked keys follow them</b> to any IP address</li>
+    </ul>
+  </div>
+  <div class="path"><s>/v1/k7f2q9/orders</s> → <span>/v1/m3x8a1/orders</span></div>
+  <div class="foot">github.com/mikaelcarlevigg/cloud-maze</div>
+  <div class="phone p1"><img src="../images/simulator.png" alt=""></div>
+  <div class="phone p2"><img src="../images/panel.png" alt=""></div>
+</body></html>
