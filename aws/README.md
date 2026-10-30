@@ -12,10 +12,11 @@ Everything is installed in your own account, and only you get the API address. A
 | The maze state | DynamoDB | Current path, previous path, closed paths and decoys |
 | The service | API Gateway and Lambda (`service`) | `GET /v1/<path>/orders`. An open path returns the real orders. A closed path or a decoy is a tripwire: the source is put in the shadow world and the answer contains fake orders. Anything else returns 404. |
 | The shadow world | DynamoDB and `service` | A source that hit a tripwire gets fake orders on every path, the real one included, for 30 minutes. Authorized clients notice nothing. |
+| Marked keys | DynamoDB and `service` | The fake orders include a fake API key made for that source. Whoever presents it, from any IP address, is recognized within seconds, sent into the shadow world and reported if the IP address is new for that key. |
 | The analyst | Lambda (`analyst`) | Sends the alarm e-mail. With an LLM connected, the e-mail includes an assessment, and the shadow world gets fake orders written by the LLM. |
 | The map service | Lambda (`map`) | Returns the current path. It can only be reached with your IAM identity, never from the internet. |
 | The alarms | SNS | E-mails you when a source hits a tripwire, with the time window that shows when the path leaked. One e-mail per source, not per request. |
-| The control panel | API Gateway and Lambda (`panel`) | A phone-friendly web page at a secret address. Shows the current path, old paths, a decoy and the shadow world, all one tap away. |
+| The control panel | API Gateway and Lambda (`panel`) | A phone-friendly web page at a secret address. Shows the current path, old paths, a decoy, the shadow world and the marked keys, all one tap away. |
 
 ## Cost and safety limits
 
@@ -61,12 +62,13 @@ Open the e-mail from AWS Notifications and tap **Confirm subscription**. Otherwi
 
 Go to the stack's **Outputs** tab and tap the link next to **PanelUrl**. Bookmark the page if you like. The address contains the stack's unique id, so only you can find it.
 
-The panel refreshes every 15 seconds and has four parts:
+The panel refreshes every 15 seconds and has five parts:
 
 - **Authorized client:** shows the path the map gives right now. Tap it and you get the orders. Wait two minutes and see that the path has changed.
 - **Old paths:** once the first path has closed, after about four minutes, it shows up here. Tap it: the answer looks real, but the orders come from customers other than Nordvind AB and are fake. You get an alarm e-mail that shows between which times the path existed, which is when it leaked.
 - **Decoy:** a path that was never on any map. It behaves like an old path.
 - **Shadow world:** after you tap an old path or the decoy, your IP address is listed here and the panel says so at the top. Tap the authorized path again: now it gives fake orders too. That is what an attacker experiences. After 30 minutes you are let out.
+- **Marked keys:** the fake orders came with a fake API key made for your IP address. Tap **use it** next to the key: it is recognized at once. Then **turn off Wi-Fi** so your phone gets a new IP address over mobile data, and tap **use it** again. You get an alarm e-mail that says the key was handed out to one address and is now used from another, and the new address goes into the shadow world too.
 
 Use the browser's back button to return to the panel.
 
@@ -197,6 +199,16 @@ Delete the key, or the whole user, when you are done testing. Never put keys in 
 
 If you have temporary keys, for example from AWS IAM Identity Center, also fill in the **session token** when the script asks.
 
+## Tests
+
+The Lambda functions can be tested on your own computer, against fake AWS services and a fake LLM. No AWS account and no extra packages are needed, just Python 3.9 or later:
+
+```bash
+python3 -m unittest discover -s aws/tests -v
+```
+
+The tests read the code straight from `template.yaml`, so they always test what gets installed.
+
 ## Settings
 
 ```bash
@@ -214,4 +226,5 @@ Phase 1 shows the core: the path moves with overlap, the authorized find their w
 - **Only the address moves.** Keys and allowed source addresses do not rotate.
 - **The service has no login of its own.** In reality Cloud Maze is a layer on top of ordinary authentication.
 - **Alarms go out by e-mail.** A real version would collect them in Security Hub.
-- **The shadow world recognizes sources by IP address.** Several users behind the same IP address, such as in an office or in CloudShell, end up there together.
+- **The shadow world recognizes sources by IP address.** Several users behind the same IP address, such as in an office or in CloudShell, end up there together. Marked keys follow an attacker who switches address, but only if they use the key.
+- **Marked keys are accepted in the address as `?api_key=`** so they can be tested with a tap. A real API would only accept keys in a header.

@@ -115,6 +115,10 @@ Because authorized clients never touch these, there are almost no false alarms. 
 
 A source that hits a tripwire does not just get an empty answer. It is put in a shadow world. There, every path works, the real one included, but everything the attacker sees is fake. The attacker believes they have succeeded and spends time on data that does not exist, while every step they take shows what they are looking for. Authorized clients are not affected, because they never hit the tripwires.
 
+### Marked keys: the attacker stays recognizable
+
+The fake data in the shadow world includes a *marked key*: a fake API key made for that one source, presented as a key with write access. An attacker who believes they have struck gold will try it, perhaps later, from another IP address, another machine or another tool. Cloud Maze recognizes the key within seconds wherever it comes from, sends the new address into the shadow world too, and raises an alarm that ties the new address to the one that got the key. That way the attacker cannot escape the shadow world by switching IP address, and you learn when what they found has been passed on.
+
 ### An LLM for content and analysis, not for decisions
 
 An LLM can be connected to write convincing content for the shadow world and to assess alarms in plain language. The maze itself is driven by rules. The guarantee that the authorized always have a way in should not depend on a language model, and an attacker who tries to trick the model should at most be able to influence a piece of text. Any LLM with an OpenAI-compatible API works, such as Groq.
@@ -288,14 +292,14 @@ None of the projects above combines these four things:
 1. **The address of a real API moves**, while authorized clients follow along through a map.
 2. **Every old address automatically becomes a tripwire.** No one has to plant decoys by hand.
 3. **The alarm shows when the information leaked**, because each address only existed for a known period.
-4. **An attacker who uses a stale address ends up in a shadow world** of fake data, while the real service stays reachable for everyone else.
+4. **An attacker who uses a stale address ends up in a shadow world** of fake data, while the real service stays reachable for everyone else, and gets a marked key that keeps them recognizable on any IP address.
 
 ### Working together with canary AWS keys
 
 Cloud Maze does not try to replace canary token tools. They catch something Cloud Maze cannot see on its own: a leaked AWS key used anywhere in AWS, from any machine. The two work well together.
 
 **1. Hand out a canary key in the shadow world.**
-An attacker in the shadow world believes they have found real data. If that data includes a canary AWS key, for example in a fake configuration object, the attacker is likely to try it. The canary then fires even if the attacker has switched IP address, machine or tool, perhaps days later. That follows the attacker beyond the shadow world, which recognizes sources only by IP address.
+An attacker in the shadow world believes they have found real data. If that data includes a canary AWS key, for example in a fake configuration object, the attacker is likely to try it. The canary then fires even if the attacker has switched IP address, machine or tool, perhaps days later. That follows the attacker even when they use the key directly against AWS, which Cloud Maze's own marked keys cannot see.
 
 **2. Plant decoy paths and canary keys together.**
 Put a Cloud Maze decoy path and a canary key in the same planted file, such as a configuration file in a repository or a CI variable. Whichever the attacker tries first, you learn that the file has leaked, and two independent alarms make it hard to dismiss as a coincidence.
@@ -313,7 +317,9 @@ Use the same e-mail address for Cloud Maze and the canary tool, or route both to
 
 A canary key has no permissions, so it is safe to hand out. Never use a real key, and never give a canary key permissions.
 
-The first idea, a canary key in the shadow world, is not built into Cloud Maze yet. It would be an optional field in the stack where you paste a key from Canarytokens.org.
+**Speed:** canary AWS keys alert through AWS's logging, which takes minutes. Cloud Maze's own marked keys alert within seconds, because Cloud Maze sees the request itself. Use marked keys to follow the attacker in your API, and canary AWS keys to catch use against AWS.
+
+The first idea, a canary AWS key in the shadow world, is not built into Cloud Maze yet. It would be an optional field in the stack where you paste a key from Canarytokens.org.
 
 ## 10. How to tell it works
 
@@ -339,7 +345,7 @@ The second and fourth measures decide whether the concept holds up in practice. 
 ## 12. Roadmap
 
 **Phase 1: Minimum viable version** (built, see [`aws/`](aws/README.md))
-A service behind API Gateway with a rotating path, a map service reachable only with IAM, tripwires that send alarms by e-mail, and a shadow world for sources that hit them. An optional LLM assesses alarms and writes the shadow world's content.
+A service behind API Gateway with a rotating path, a map service reachable only with IAM, tripwires that send alarms by e-mail, a shadow world for sources that hit them, and marked keys that keep attackers recognizable on any IP address. An optional LLM assesses alarms and writes the shadow world's content.
 
 **Phase 2: More walls**
 Rotation of keys through Secrets Manager and of allowed source addresses in WAF. Fake keys as decoys. Integration with Security Hub.
@@ -361,6 +367,7 @@ Packaged installation through AWS CloudFormation or CDK, an overview of the maze
 | **Overlap** | The time when both the old and the new path work, so no authorized client is locked out |
 | **Tripwire** | A closed path or a decoy that raises an alarm when someone uses it |
 | **Shadow world** | Where a source that hit a tripwire ends up: every path works, but all data is fake |
+| **Marked key** | A fake API key handed out in the shadow world, made for one source, that gives the attacker away wherever it is used |
 | **Half-life** | How long information about the system stays useful to an attacker |
 | **mTLS** | Mutual TLS, where both client and server present certificates |
 | **SigV4** | AWS's way of signing requests with an IAM identity |
