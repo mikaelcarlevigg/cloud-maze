@@ -654,6 +654,9 @@ Resources:
           def hm(ts):
               return datetime.fromtimestamp(int(ts), timezone.utc).strftime("%H:%M:%S")
 
+          def count(n, one, many):
+              return f"{int(n)} {one if int(n) == 1 else many}"
+
           def link(path, text):
               url = html.escape(f"{API}/v1/{path}/orders")
               return f'<a href="{url}">{html.escape(text)}</a>'
@@ -677,13 +680,13 @@ Resources:
               keys = "".join(
                   f'<li><code>{html.escape(k["pk"][2:18])}...</code> '
                   f'<a href="{html.escape(API + "/v1/" + cur + "/orders?api_key=" + k["pk"][2:])}">use it</a><br>'
-                  f'<small>handed to {html.escape(k["source"])} at {hm(k["issued"])} UTC, used {int(k["uses"])} times '
-                  f'from {len(k.get("ips", []))} IP addresses</small></li>'
+                  f'<small>handed to {html.escape(k["source"])} at {hm(k["issued"])} UTC, used {count(k["uses"], "time", "times")} '
+                  f'from {count(len(k.get("ips", [])), "IP address", "IP addresses")}</small></li>'
                   for k in marked) or "<li>None yet. One is handed out with the fake orders.</li>"
               me = (event.get("requestContext", {}).get("http", {}) or {}).get("sourceIp")
               sources = "".join(
                   f"<li>{html.escape(q['pk'][2:])}{' (you)' if q['pk'][2:] == me else ''}<br>"
-                  f"<small>since {hm(q['since'])} UTC, {int(q['hits'])} requests, released {hm(q['expires'])} UTC</small></li>"
+                  f"<small>since {hm(q['since'])} UTC, {count(q['hits'], 'request', 'requests')}, released {hm(q['expires'])} UTC</small></li>"
                   for q in shadow) or "<li>None yet.</li>"
               banner = ("<p><b>Your IP address is in the shadow world.</b> Every link below now returns fake "
                         "orders, the authorized path included.</p>") if any(q["pk"][2:] == me for q in shadow) else ""

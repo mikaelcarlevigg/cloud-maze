@@ -12,16 +12,16 @@ Cloud Maze is an open-source prototype of *moving target defense* on AWS. The ad
   <sub>The simulator. Tap the image to play the attacker in your browser.</sub>
 </p>
 
-<!--
-  Room for screenshots from a real AWS install. Save them in docs/images/ and remove this comment:
-
 <p align="center">
-  <img src="docs/images/panel.png" width="320" alt="The control panel in AWS, with an IP address in the shadow world and a marked key.">
-  &nbsp;
-  <img src="docs/images/alarm-email.png" width="320" alt="An alarm e-mail with the leak window and an analysis from the LLM.">
+  <img src="docs/images/panel.png" width="320" alt="The control panel of the AWS version: the current path, two closed paths with the times they existed, a decoy, two IP addresses in the shadow world and a marked key.">
   <br>
-  <sub>The control panel and an alarm e-mail from a real install.</sub>
+  <sub>The control panel of the AWS version, rendered from its own code with test data and documentation IP addresses.</sub>
 </p>
+
+<!--
+  Room for a screenshot of an alarm e-mail from a real install. Save it as
+  docs/images/alarm-email.png, crop away the unsubscribe link (it shows the
+  AWS account number), and add it here.
 -->
 
 ## Try it
