@@ -28,6 +28,8 @@ Parameters:
     Type: String
     Description: Optional. Base URL of any OpenAI-compatible API, for example https://api.groq.com/openai/v1. Leave empty to run without an LLM.
     Default: ""
+    AllowedPattern: "^(https://[^\\s]+)?$"
+    ConstraintDescription: must be empty or a single address that starts with https://, for example https://api.groq.com/openai/v1, with nothing before or after it.
   LlmModel:
     Type: String
     Description: Optional. Model name at that provider, for example llama-3.3-70b-versatile on Groq.
