@@ -1,5 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Cloud Maze Simulator</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap">
 <style>
@@ -34,6 +38,8 @@
     --decoy: #c29bff; --decoy-bg: #2b2040; --closed-bg: #222c3d; color-scheme: dark;
   }
   [hidden] { display: none !important; }
+  :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body { margin: 0; -webkit-text-size-adjust: 100%; }
   body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
   main {
     max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px;
@@ -88,6 +94,8 @@
   @media (max-width: 380px) { .actions { grid-template-columns: 1fr; } }
 </style>
 
+</head>
+<body>
 <main>
   <header style="display:flex;flex-direction:column;gap:6px">
     <h1>Cloud Maze Simulator</h1>
@@ -323,3 +331,5 @@
   loop();
 })();
 </script>
+</body>
+</html>

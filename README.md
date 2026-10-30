@@ -6,7 +6,8 @@ Cloud Maze is a *moving target defense* concept built on AWS. Internet-facing se
 
 **Want to try it?**
 - **For real on AWS:** [`aws/`](aws/README.md) installs phase 1 in your own AWS account. You can do it from a phone through the CloudFormation console.
-- **Without an AWS account:** [`sim/`](sim/README.md) has a simulation, both as a web page (`sim/web.html`) and in Python (`python3 demo.py`).
+- **In your browser, right now:** [play the attacker in the simulator](https://mikaelcarlevigg.github.io/cloud-maze/sim/web.html). Nothing to install.
+- **Without an AWS account, locally:** [`sim/`](sim/README.md) has the same simulation in Python (`python3 demo.py`).
 
 ---
 
