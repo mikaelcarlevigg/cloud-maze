@@ -1,13 +1,50 @@
 # Cloud Maze
 
-**AWS infrastructure that keeps changing shape. Attackers never find the same path twice, but authorized users always have a way in.**
+**Your API moves every few minutes. Authorized clients follow a map. Attackers walk into a maze.**
 
-Cloud Maze is a *moving target defense* concept built on AWS. Internet-facing services, such as APIs, admin interfaces and partner integrations, regularly move their addresses, their routes and their keys. Authorized clients get an up-to-date map and notice nothing. Anyone who mapped the system from the outside is suddenly holding a map that no longer matches. If an attacker still tries to follow the old map, an alarm goes off.
+Cloud Maze is an open-source prototype of *moving target defense* on AWS. The address of an API keeps rotating, every old address becomes a tripwire that shows when it leaked, and whoever uses one ends up in a shadow world of fake data, followed by a marked key that gives them away on any IP address.
 
-**Want to try it?**
-- **For real on AWS:** [`aws/`](aws/README.md) installs phase 1 in your own AWS account. You can do it from a phone through the CloudFormation console.
-- **In your browser, right now:** [play the attacker in the simulator](https://mikaelcarlevigg.github.io/cloud-maze/sim/web.html). Nothing to install.
-- **Without an AWS account, locally:** [`sim/`](sim/README.md) has the same simulation in Python (`python3 demo.py`).
+<p align="center">
+  <a href="https://mikaelcarlevigg.github.io/cloud-maze/sim/web.html">
+    <img src="docs/images/simulator.png" width="320" alt="The Cloud Maze simulator: the current path, a stolen path that has closed, an authorized client with 19 of 19 requests succeeding, and two alarms that show when the paths leaked.">
+  </a>
+  <br>
+  <sub>The simulator. Tap the image to play the attacker in your browser.</sub>
+</p>
+
+<!--
+  Room for screenshots from a real AWS install. Save them in docs/images/ and remove this comment:
+
+<p align="center">
+  <img src="docs/images/panel.png" width="320" alt="The control panel in AWS, with an IP address in the shadow world and a marked key.">
+  &nbsp;
+  <img src="docs/images/alarm-email.png" width="320" alt="An alarm e-mail with the leak window and an analysis from the LLM.">
+  <br>
+  <sub>The control panel and an alarm e-mail from a real install.</sub>
+</p>
+-->
+
+## Try it
+
+| How | Time | What you need |
+| --- | --- | --- |
+| [**Play the attacker in your browser**](https://mikaelcarlevigg.github.io/cloud-maze/sim/web.html) | 1 minute | Nothing |
+| [**Install it in your own AWS account**](aws/README.md) | 5 minutes | An AWS account. Works from a phone. |
+| [**Run the simulation locally**](sim/README.md) | 1 minute | Python 3.9 or later |
+
+The AWS version shuts itself down after two hours and costs practically nothing to try.
+
+## What it does
+
+- **The path rotates.** `/v1/k7f2q9/orders` becomes `/v1/m3x8a1/orders` on a schedule. Authorized clients fetch a map through IAM, and an overlap keeps both paths open while they switch, so nobody gets locked out.
+- **Old paths become tripwires.** Authorized clients never use them, so a hit is a strong signal. The alarm says when the path existed, which is when the information leaked.
+- **Attackers land in a shadow world.** Every path they call works, the real one included, but the data is fake. Everyone else still gets the real service.
+- **Marked keys follow them.** The fake data includes a fake API key made for that attacker. It is recognized within seconds from any IP address.
+- **Bring your own LLM.** Any OpenAI-compatible API, such as Groq, can assess alarms and write the fake data. The maze itself runs on rules, so tricking the model can at most change some text in an e-mail.
+
+**Status:** a prototype, tested end to end in a real AWS account. It is a layer on top of ordinary security, not a replacement for it. MIT licensed.
+
+The rest of this page explains the concept in depth: the problem, the rules of the maze, the architecture, the limits, and how it compares with existing tools.
 
 ---
 
