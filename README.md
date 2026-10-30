@@ -4,6 +4,8 @@
 
 Cloud Maze is an open-source prototype of *moving target defense* on AWS. The address of an API keeps rotating, every old address becomes a tripwire that shows when it leaked, and whoever uses one ends up in a shadow world of fake data, followed by a marked key that gives them away on any IP address.
 
+**▶ [Play the attacker in your browser](https://mikaelcarlevigg.github.io/cloud-maze/sim/web.html)** — no install, no account.
+
 <p align="center">
   <a href="https://mikaelcarlevigg.github.io/cloud-maze/sim/web.html">
     <img src="docs/images/simulator.png" width="320" alt="The Cloud Maze simulator: the current path, a stolen path that has closed, an authorized client with 19 of 19 requests succeeding, and two alarms that show when the paths leaked.">

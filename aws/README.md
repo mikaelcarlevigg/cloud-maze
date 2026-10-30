@@ -4,6 +4,8 @@ This version runs for real in an AWS account. You can install and test it with n
 
 Everything is installed in your own account, and only you get the API address. Anyone else who wants to try it installs it in their own AWS account the same way.
 
+Want to see how it works first? [Play the attacker in the browser simulator](https://mikaelcarlevigg.github.io/cloud-maze/sim/web.html). It runs entirely in your browser and needs no AWS account.
+
 ## What gets built
 
 | Part | AWS service | What it does |
