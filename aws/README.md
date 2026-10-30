@@ -18,6 +18,14 @@ Everything is installed in your own account, and only you get the API address. A
 | The alarms | SNS | E-mails you when a source hits a tripwire, with the time window that shows when the path leaked. One e-mail per source, not per request. |
 | The control panel | API Gateway and Lambda (`panel`) | A phone-friendly web page at a secret address. Shows the current path, old paths, a decoy, the shadow world and the marked keys, all one tap away. |
 
+> [!IMPORTANT]
+> **A prototype, not production.** Two limits are left in place on purpose, because fixing them adds a fixed monthly cost:
+>
+> - **The rate limit is shared by everyone.** 2 requests per second for the whole API protects your bill, but an attacker can use it up so that authorized clients get errors. For real use: AWS WAF with per-source rate limits, behind CloudFront.
+> - **The LLM key is an environment variable** on the `analyst` function. For real use: AWS Secrets Manager or Parameter Store.
+>
+> See the [security review](#security-review) for everything else.
+
 ## Cost and safety limits
 
 Nothing should cost money silently. That is why these limits exist:

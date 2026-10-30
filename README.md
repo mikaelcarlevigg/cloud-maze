@@ -44,6 +44,14 @@ The AWS version shuts itself down after two hours and costs practically nothing 
 
 **Status:** a prototype, tested end to end in a real AWS account. It is a layer on top of ordinary security, not a replacement for it. MIT licensed.
 
+> [!IMPORTANT]
+> **Before you use it for anything real.** Two things are left as they are on purpose, to keep the prototype free of fixed monthly costs:
+>
+> - **The rate limit is shared by everyone.** The API allows 2 requests per second in total, which protects your bill but lets an attacker crowd out authorized clients. For real use, put AWS WAF with per-source rate limits in front of the API.
+> - **The LLM key is stored as an environment variable** on a Lambda function, readable by anyone who can view its configuration. For real use, keep it in AWS Secrets Manager or Parameter Store.
+>
+> The full [security review](aws/README.md#security-review) lists everything that was found and fixed, and what remains.
+
 The rest of this page explains the concept in depth: the problem, the rules of the maze, the architecture, the limits, and how it compares with existing tools.
 
 ---
