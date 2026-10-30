@@ -6,7 +6,7 @@ The simulation implements the same logic as the concept in the [main README](../
 
 ## Only have a phone?
 
-Open `web.html` in a browser. It runs the same logic right in the page, and you play the attacker with buttons.
+Open the simulator at https://mikaelcarlevigg.github.io/cloud-maze/sim/web.html, or open `web.html` from the repository in a browser. It runs the same logic right in the page, and you play the attacker with buttons.
 
 ## Getting started
 

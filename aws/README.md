@@ -10,13 +10,21 @@ Everything is installed in your own account, and only you get the API address. A
 | --- | --- | --- |
 | The maze engine | EventBridge and Lambda (`rotator`) | Moves the service's path every two minutes. A path lives for two intervals, the second of which is the overlap. |
 | The maze state | DynamoDB | Current path, previous path, closed paths and decoys |
-| The service | API Gateway and Lambda (`service`) | `GET /v1/<path>/orders`. An open path returns the real orders. A closed path or a decoy is a tripwire: the source is put in the shadow world and the answer contains fake orders. Anything else returns 404. |
+| The service | API Gateway and Lambda (`service`) | `GET /v1/<path>/orders`. An open path with the pass from the map returns the real orders. An open path without a pass returns 401, like any API without credentials. A closed path or a decoy is a tripwire: the source is put in the shadow world and the answer contains fake orders. Anything else returns 404. |
 | The shadow world | DynamoDB and `service` | A source that hit a tripwire gets fake orders on every path, the real one included, for 30 minutes. Authorized clients notice nothing. |
 | Marked keys | DynamoDB and `service` | The fake orders include a fake API key made for that source. Whoever presents it, from any IP address, is recognized within seconds, sent into the shadow world and reported if the IP address is new for that key. |
 | The analyst | Lambda (`analyst`) | Sends the alarm e-mail. With an LLM connected, the e-mail includes an assessment, and the shadow world gets fake orders written by the LLM. |
-| The map service | Lambda (`map`) | Returns the current path. It can only be reached with your IAM identity, never from the internet. |
+| The map service | Lambda (`map`) | Returns the current path and its pass, which authorized clients send as `X-Maze-Pass`. Every path has its own pass. The map can only be reached with your IAM identity, never from the internet. |
 | The alarms | SNS | E-mails you when a source hits a tripwire, with the time window that shows when the path leaked. One e-mail per source, not per request. |
 | The control panel | API Gateway and Lambda (`panel`) | A phone-friendly web page at a secret address. Shows the current path, old paths, a decoy, the shadow world and the marked keys, all one tap away. |
+
+> [!IMPORTANT]
+> **A prototype, not production.** Two limits are left in place on purpose, because fixing them adds a fixed monthly cost:
+>
+> - **The rate limit is shared by everyone.** 2 requests per second for the whole API protects your bill, but an attacker can use it up so that authorized clients get errors. For real use: AWS WAF with per-source rate limits, behind CloudFront.
+> - **The LLM key is an environment variable** on the `analyst` function. For real use: AWS Secrets Manager or Parameter Store.
+>
+> See the [security review](#security-review) for everything else.
 
 ## Cost and safety limits
 
@@ -26,6 +34,7 @@ Nothing should cost money silently. That is why these limits exist:
 2. **The API is throttled to 2 requests per second.** Even if someone found the address and hammered it, there could not be many requests.
 3. **A budget alarm, which you add yourself.** It cannot be created from the template in every region. Go to **Billing and Cost Management**, choose **Budgets**, tap **Create budget** and pick the **Zero spend budget** template. Enter your e-mail and tap **Create budget**. You then get an e-mail as soon as the account costs anything at all. Budget alarms update a few times a day, so they are a safety net, not a hard stop.
 4. **Deleting the stack removes everything.** Do it when you are done.
+5. **Alarm e-mails are capped at 30 per hour** (`AlarmMaxPerHour`), and LLM calls at 20 per hour (`LlmMaxCallsPerHour`). An attacker with many IP addresses cannot flood your inbox or run up an LLM bill. When the alarm cap is hit you get one e-mail saying so, and further alarms that hour are only logged.
 
 Every part is billed per use, and a test round makes only a few hundred requests, so the cost is effectively zero. Lambda and API Gateway also have free tiers. When you create a new AWS account you may be offered a free plan with starting credits, under which the account is not charged at all. Check what applies when you sign up.
 
@@ -64,7 +73,7 @@ Go to the stack's **Outputs** tab and tap the link next to **PanelUrl**. Bookmar
 
 The panel refreshes every 15 seconds and has five parts:
 
-- **Authorized client:** shows the path the map gives right now. Tap it and you get the orders. Wait two minutes and see that the path has changed.
+- **Authorized client:** shows the path the map gives right now. Tap it and you get the real orders: the link carries the path's pass, like an authorized client. Wait two minutes and see that the path has changed. Later, when your IP address is in the shadow world, this link still gives the real orders, because it has the pass.
 - **Old paths:** once the first path has closed, after about four minutes, it shows up here. Tap it: the answer looks real, but the orders come from customers other than Nordvind AB and are fake. You get an alarm e-mail that shows between which times the path existed, which is when it leaked.
 - **Decoy:** a path that was never on any map. It behaves like an old path.
 - **Shadow world:** after you tap an old path or the decoy, your IP address is listed here and the panel says so at the top. Tap the authorized path again: now it gives fake orders too. That is what an attacker experiences. After 30 minutes you are let out.
@@ -123,7 +132,7 @@ If you come back later, or CloudShell has restarted, just type `cloud-maze/cm` a
 1. **Choose 1** and enter your e-mail address. Installation takes a few minutes.
 2. **Open the e-mail from AWS Notifications and tap *Confirm subscription*.** Otherwise no alarms arrive.
 3. **Choose 2.** The authorized client fetches the map with your IAM identity and calls the service every ten seconds for six minutes. You see it switch paths every two minutes without a single request failing.
-4. **Choose 3.** You steal the path that is current right now, as if it had leaked in a log. It works, and you get the orders.
+4. **Choose 3.** You steal a full request to the path that is current right now, pass included, as if it had leaked in a log. It works, and you get the orders.
 5. **Wait 4–5 minutes.** The menu shows *CLOSED* once the stolen path has closed.
 6. **Choose 4.** The answer looks normal, but the orders are fake. Check your e-mail: there is an alarm that tells you which path was used, where the request came from, and between which times the path existed. That is when the leak happened.
 7. **Choose 5 and 6.** A decoy alarms the same way. A guessed path just returns 404 and no alarm.
@@ -217,6 +226,29 @@ The tests read the code straight from `template.yaml`, so they always test what 
 
 How long the maze runs (`RunHours`) and how long a source stays in the shadow world (`ShadowMinutes`) are chosen when you create the stack, or in `template.yaml`. The maze does not restart on its own after it has shut down. Delete the stack and create it again.
 
+## Security review
+
+This section lists what an attacker could exploit in this prototype, found by reviewing it as an attacker would. Most of it is fixed; what remains are limits that a real deployment has to solve.
+
+**Fixed**
+
+- **Shared IP addresses.** The shadow world recognizes sources by IP address, so an authorized client behind the same address as an attacker, such as in an office, a VPN or a mobile network, used to get fake data without noticing. Authorized clients now send the pass from the map, and a valid pass always gets the real orders, even from an address in the shadow world.
+- **A service without a login.** An open path used to work for anyone who knew it. It now requires the pass, and answers 401 without one.
+- **Answers that gave the shadow world away.** The `meta` field with the marked key only appeared in fake answers, and the service's errors differed from API Gateway's own. Real and fake answers now have the same shape, the real ones with an untracked key in the same format, and errors match API Gateway's.
+- **A blind spot in the alarm cap.** An attacker could trigger many alarms first and hide a later, targeted one in the same hour. Each kind of alarm now has its own cap, so a flood of decoy hits cannot hide a stale path or a marked key, and alarms that a cap held back arrive as a digest once the hour is over.
+- **Inbox flooding.** An attacker with many IP addresses could trigger one alarm e-mail per address. Alarm e-mails are capped per hour and kind.
+- **Phishing links through the LLM.** An attacker can put text in the user agent that steers the LLM, for example to add a link to a fake login page in the e-mail to you. Links are removed from the LLM's text. The facts above it always come from the code.
+- **A panel address that could leak.** The panel now tells browsers not to send its address on to other sites, not to cache it and not to index it.
+- **A table that only grows, and an incomplete panel.** Marked keys now expire after 30 days, and the panel follows up to ten pages of the table.
+
+**Known limits**
+
+- **The throttle can be used against you.** The limit of 2 requests per second applies to the whole API, not per source. That protects your bill, but an attacker who sends more than that can make authorized clients get errors. Per-source limits need AWS WAF in front of the API, which has a fixed monthly cost.
+- **The deception can still be spotted by a careful attacker.** Someone who saw the real orders before the path closed will notice that the customers change.
+- **A stolen pass works until its path closes.** Whoever steals a full request, pass included, can use it for up to two intervals. After that it is a tripwire like the path.
+- **The panel address is still a key.** Anyone with it can see the current path and its pass. Do not share it or show it in screenshots.
+- **The LLM key is stored as an environment variable** on the `analyst` function, visible to anyone who can read the function's configuration in your account.
+
 ## Differences from the concept
 
 Phase 1 shows the core: the path moves with overlap, the authorized find their way through the map, and old paths and decoys raise alarms and lead into the shadow world. This is still missing:
@@ -224,7 +256,7 @@ Phase 1 shows the core: the path moves with overlap, the authorized find their w
 - **The path check happens in Lambda.** In the concept, CloudFront and WAF stop old paths at the edge.
 - **The map is not signed.** IAM protects it, but KMS signing is not included yet.
 - **Only the address moves.** Keys and allowed source addresses do not rotate.
-- **The service has no login of its own.** In reality Cloud Maze is a layer on top of ordinary authentication.
+- **The pass is the only login.** In reality Cloud Maze is a layer on top of ordinary authentication, such as OAuth or mTLS.
 - **Alarms go out by e-mail.** A real version would collect them in Security Hub.
-- **The shadow world recognizes sources by IP address.** Several users behind the same IP address, such as in an office or in CloudShell, end up there together. Marked keys follow an attacker who switches address, but only if they use the key.
+- **The shadow world recognizes sources by IP address.** Several unauthorized users behind the same address end up there together. Authorized clients are not affected, since their pass always gets them through. Marked keys follow an attacker who switches address, but only if they use the key.
 - **Marked keys are accepted in the address as `?api_key=`** so they can be tested with a tap. A real API would only accept keys in a header.
