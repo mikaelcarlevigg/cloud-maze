@@ -24,6 +24,11 @@ Parameters:
     Description: How long a source that hit a tripwire stays in the shadow world, where every path returns fake orders.
     Default: 30
     AllowedValues: [10, 30, 60]
+  LlmProvider:
+    Type: String
+    Description: Where the LLM runs. openai-compatible is any OpenAI-compatible API such as Groq, and needs a base URL and an API key. bedrock is Amazon Bedrock in this account, and needs no key.
+    Default: openai-compatible
+    AllowedValues: [openai-compatible, bedrock]
   LlmBaseUrl:
     Type: String
     Description: Optional. Base URL of any OpenAI-compatible API, for example https://api.groq.com/openai/v1. Leave empty to run without an LLM.
@@ -32,7 +37,7 @@ Parameters:
     ConstraintDescription: must be empty or a single address that starts with https://, for example https://api.groq.com/openai/v1, with nothing before or after it.
   LlmModel:
     Type: String
-    Description: Optional. Model name at that provider, for example llama-3.3-70b-versatile on Groq.
+    Description: Optional. Model name at that provider, for example llama-3.3-70b-versatile on Groq. With Bedrock, the model ID or inference profile ID from the Bedrock console. Leave empty to run without an LLM.
     Default: ""
   LlmApiKey:
     Type: String
@@ -57,8 +62,11 @@ Metadata:
     ParameterGroups:
       - Label: { default: Cloud Maze }
         Parameters: [AlarmEmail, IntervalMinutes, RunHours, ShadowMinutes, AlarmMaxPerHour]
-      - Label: { default: "LLM (optional, any OpenAI-compatible API)" }
-        Parameters: [LlmBaseUrl, LlmModel, LlmApiKey, LlmMaxCallsPerHour]
+      - Label: { default: "LLM (optional): any OpenAI-compatible API, or Amazon Bedrock" }
+        Parameters: [LlmProvider, LlmModel, LlmBaseUrl, LlmApiKey, LlmMaxCallsPerHour]
+
+Conditions:
+  UseBedrock: !Equals [!Ref LlmProvider, bedrock]
 
 Resources:
   StateTable:
@@ -432,6 +440,12 @@ Resources:
               - Effect: Allow
                 Action: sns:Publish
                 Resource: !Ref AlarmTopic
+              - !If
+                - UseBedrock
+                - Effect: Allow
+                  Action: bedrock:InvokeModel
+                  Resource: "*"
+                - !Ref AWS::NoValue
 
   AnalystFunction:
     Type: AWS::Lambda::Function
@@ -445,6 +459,7 @@ Resources:
         Variables:
           TABLE: !Ref StateTable
           TOPIC: !Ref AlarmTopic
+          LLM_PROVIDER: !Ref LlmProvider
           LLM_BASE_URL: !Ref LlmBaseUrl
           LLM_MODEL: !Ref LlmModel
           LLM_API_KEY: !Ref LlmApiKey
@@ -460,6 +475,8 @@ Resources:
           BASE = os.environ["LLM_BASE_URL"].strip().rstrip("/")
           MODEL = os.environ["LLM_MODEL"]
           KEY = os.environ["LLM_API_KEY"].strip()
+          BEDROCK = os.environ["LLM_PROVIDER"] == "bedrock"
+          LLM_ON = bool(MODEL) and (BEDROCK or bool(BASE and KEY))
 
           def utc(ts):
               return datetime.fromtimestamp(int(ts), timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -494,6 +511,13 @@ Resources:
               return allowed("llm", os.environ["LLM_MAX_PER_HOUR"])
 
           def llm(system, user):
+              if BEDROCK:
+                  # Amazon Bedrock in this account. The function's IAM role grants access, no key needed.
+                  reply = boto3.client("bedrock-runtime").converse(
+                      modelId=MODEL, system=[{"text": system}],
+                      messages=[{"role": "user", "content": [{"text": user}]}],
+                      inferenceConfig={"maxTokens": 700})
+                  return reply["output"]["message"]["content"][0]["text"].strip()
               # Any OpenAI-compatible chat completions API: Groq, OpenAI, Mistral, OpenRouter ...
               body = {"model": MODEL, "max_tokens": 700, "messages": [
                   {"role": "system", "content": system}, {"role": "user", "content": user}]}
@@ -560,7 +584,7 @@ Resources:
                           "a digest of the held-back alarms follows when the hour is over."))
                   return
               subject, lines = facts(report)
-              if not (BASE and MODEL and KEY):
+              if not LLM_ON:
                   lines.append("\nLLM: off.")
               else:
                   try:
@@ -732,6 +756,7 @@ Resources:
           TOKEN: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
           ROTATOR: !Ref RotatorFunction
           LLM_MODEL: !Ref LlmModel
+          LLM_PROVIDER: !Ref LlmProvider
       Code:
         ZipFile: |
           import hmac, html, os, time
@@ -787,7 +812,8 @@ Resources:
                   for q in shadow) or "<li>None yet.</li>"
               banner = ("<p><b>Your IP address is in the shadow world.</b> Every link below now returns fake "
                         "orders, the authorized path included.</p>") if any(q["pk"][2:] == me for q in shadow) else ""
-              brain = html.escape(os.environ["LLM_MODEL"]) if os.environ["LLM_MODEL"] else "off"
+              brain = (html.escape(os.environ["LLM_MODEL"]) + (" on Bedrock" if os.environ["LLM_PROVIDER"] == "bedrock" else "")
+                       if os.environ["LLM_MODEL"] else "off")
               old = "".join(
                   f"<li>{link(p, p)}<br><small>existed {hm(w['o'])} to {hm(w['c'])} UTC</small></li>"
                   for p, w in closed) or "<li>None yet. The first one closes in a few minutes.</li>"

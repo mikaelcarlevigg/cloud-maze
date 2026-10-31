@@ -160,6 +160,7 @@ class World:
 
     def __init__(self):
         self.items, self.mails, self.clock, self.modules = {}, [], [1_000_000], {}
+        self.bedrock_calls = []
 
     def boto3(self):
         world = self
@@ -172,6 +173,16 @@ class World:
         class Client:
             def __init__(self, service):
                 self.service = service
+
+            def converse(self, modelId, system, messages, inferenceConfig):
+                # Answers in the shape of Amazon Bedrock's Converse API.
+                world.bedrock_calls.append({"model": modelId, "system": system[0]["text"],
+                                            "user": messages[0]["content"][0]["text"]})
+                if "decoy data" in system[0]["text"]:
+                    text = '[{"id": "B-7001", "customer": "Ekholm Maskin AB", "amount_sek": 56100}]'
+                else:
+                    text = "Severity: high. A marked key moved. See https://evil.example now."
+                return {"output": {"message": {"role": "assistant", "content": [{"text": text}]}}}
 
             def publish(self, TopicArn, Subject, Message):
                 world.mails.append({"subject": Subject, "message": Message})
@@ -236,7 +247,7 @@ class LambdaTest(unittest.TestCase):
         cls.llm_server.shutdown()
         cls.llm_server.server_close()
 
-    def setUp(self, llm=True, max_calls="20", max_alarms="30"):
+    def setUp(self, llm=True, max_calls="20", max_alarms="30", provider="openai-compatible"):
         FakeLlm.requests, FakeLlm.fail = [], False
         self.world = World()
         sys.modules["boto3"] = self.world.boto3()
@@ -247,7 +258,7 @@ class LambdaTest(unittest.TestCase):
             "LLM_BASE_URL": f"http://127.0.0.1:{self.llm_server.server_port}/openai/v1/" if llm else "",
             "LLM_MODEL": "llama-3.3-70b-versatile" if llm else "",
             "LLM_API_KEY": "gsk_test" if llm else "", "LLM_MAX_PER_HOUR": max_calls,
-            "ALARM_MAX_PER_HOUR": max_alarms,
+            "ALARM_MAX_PER_HOUR": max_alarms, "LLM_PROVIDER": provider,
         }
         self._old_env = dict(os.environ)
         os.environ.update(self.env)
@@ -550,6 +561,31 @@ class AlarmCapTests(LambdaTest):
         self.advance(3600)
         self.call(decoy, ip="10.0.1.1")
         self.assertEqual(self.world.mails[-1]["subject"], "Cloud Maze: decoy used")
+
+
+class BedrockTests(LambdaTest):
+    def setUp(self):
+        super().setUp(provider="bedrock")
+        # Bedrock needs no base URL and no key: the IAM role grants access.
+        os.environ.update(LLM_BASE_URL="", LLM_API_KEY="", LLM_MODEL="example.bedrock-model-id")
+        for name in ("AnalystFunction", "PanelFunction"):
+            module = types.ModuleType(name)
+            exec(self.sources[name], module.__dict__)
+            self.world.modules[name] = module
+
+    def test_analysis_and_fake_orders_come_from_bedrock(self):
+        stale = self.stale_path()
+        self.call(stale)
+        mail = self.world.mails[-1]["message"]
+        self.assertIn("Analysis from example.bedrock-model-id:\nSeverity: high", mail)
+        self.assertIn("[link removed]", mail)
+        self.assertNotIn("evil.example", mail)
+        self.assertEqual({c["model"] for c in self.world.bedrock_calls}, {"example.bedrock-model-id"})
+        self.assertEqual(FakeLlm.requests, [])
+        self.assertEqual(self.customers(self.call(stale)[1]), ["Ekholm Maskin AB"])
+
+    def test_panel_names_bedrock(self):
+        self.assertIn("LLM: example.bedrock-model-id on Bedrock", self.panel()["body"])
 
 
 class LlmOffTests(LambdaTest):
