@@ -16,8 +16,12 @@ read -rp "Is that right? Type y to continue: " yes
 [ "$yes" = "y" ] || { echo "Cancelled."; exit 1; }
 # Optional LLM, any OpenAI-compatible API:
 #   LLM_BASE_URL=https://api.groq.com/openai/v1 LLM_MODEL=llama-3.3-70b-versatile ./deploy.sh you@example.com
+# Or Amazon Bedrock, with no key:
+#   LLM_PROVIDER=bedrock LLM_MODEL=<model or inference profile id> ./deploy.sh you@example.com
 PARAMS=("AlarmEmail=$EMAIL" "IntervalMinutes=$INTERVAL")
-if [ -n "${LLM_BASE_URL:-}" ]; then
+if [ "${LLM_PROVIDER:-}" = "bedrock" ]; then
+  PARAMS+=("LlmProvider=bedrock" "LlmModel=${LLM_MODEL:?Set LLM_MODEL to a Bedrock model or inference profile id}")
+elif [ -n "${LLM_BASE_URL:-}" ]; then
   [ -n "${LLM_API_KEY:-}" ] || read -rsp "API key for the LLM (hidden as you type): " LLM_API_KEY; echo
   PARAMS+=("LlmBaseUrl=$LLM_BASE_URL" "LlmModel=${LLM_MODEL:?Set LLM_MODEL}" "LlmApiKey=$LLM_API_KEY")
 fi

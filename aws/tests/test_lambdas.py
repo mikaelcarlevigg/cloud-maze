@@ -67,7 +67,9 @@ def as_dynamo(value):
     if isinstance(value, int):
         return Decimal(value)
     if isinstance(value, dict):
-        return {k: as_dynamo(v) for k, v in value.items()}
+        # DynamoDB does not keep the order of map keys; a real answer came back sorted. Sorting here
+        # catches code that relies on the original order.
+        return {k: as_dynamo(value[k]) for k in sorted(value)}
     if isinstance(value, list):
         return [as_dynamo(v) for v in value]
     return copy.deepcopy(value)
@@ -160,6 +162,8 @@ class World:
 
     def __init__(self):
         self.items, self.mails, self.clock, self.modules = {}, [], [1_000_000], {}
+        self.bedrock_calls = []
+        self.bedrock_refuses_data = False
 
     def boto3(self):
         world = self
@@ -172,6 +176,18 @@ class World:
         class Client:
             def __init__(self, service):
                 self.service = service
+
+            def converse(self, modelId, system, messages, inferenceConfig):
+                # Answers in the shape of Amazon Bedrock's Converse API.
+                world.bedrock_calls.append({"model": modelId, "system": system[0]["text"],
+                                            "user": messages[0]["content"][0]["text"]})
+                if "sample data" in system[0]["text"] and world.bedrock_refuses_data:
+                    text = "I can't help create fake records."
+                elif "sample data" in system[0]["text"]:
+                    text = '[{"id": "B-7001", "customer": "Ekholm Maskin AB", "amount_sek": 56100}]'
+                else:
+                    text = "Severity: high. A marked key moved. See https://evil.example now."
+                return {"output": {"message": {"role": "assistant", "content": [{"text": text}]}}}
 
             def publish(self, TopicArn, Subject, Message):
                 world.mails.append({"subject": Subject, "message": Message})
@@ -215,7 +231,7 @@ class FakeLlm(BaseHTTPRequestHandler):
             return
         content = ('Here you go: [{"id": "A-5531", "customer": "Lindqvist Byggvaror AB", "amount_sek": 23400},'
                    ' {"id": "A-5532", "customer": "Bad", "amount_sek": "lots"}]'
-                   if "decoy data" in system else "Severity: medium. An old path was used.")
+                   if "sample data" in system else "Severity: medium. An old path was used.")
         data = json.dumps({"choices": [{"message": {"content": content}}]}).encode()
         self.send_response(200)
         self.end_headers()
@@ -236,7 +252,7 @@ class LambdaTest(unittest.TestCase):
         cls.llm_server.shutdown()
         cls.llm_server.server_close()
 
-    def setUp(self, llm=True, max_calls="20", max_alarms="30"):
+    def setUp(self, llm=True, max_calls="20", max_alarms="30", provider="openai-compatible"):
         FakeLlm.requests, FakeLlm.fail = [], False
         self.world = World()
         sys.modules["boto3"] = self.world.boto3()
@@ -247,7 +263,7 @@ class LambdaTest(unittest.TestCase):
             "LLM_BASE_URL": f"http://127.0.0.1:{self.llm_server.server_port}/openai/v1/" if llm else "",
             "LLM_MODEL": "llama-3.3-70b-versatile" if llm else "",
             "LLM_API_KEY": "gsk_test" if llm else "", "LLM_MAX_PER_HOUR": max_calls,
-            "ALARM_MAX_PER_HOUR": max_alarms,
+            "ALARM_MAX_PER_HOUR": max_alarms, "LLM_PROVIDER": provider,
         }
         self._old_env = dict(os.environ)
         os.environ.update(self.env)
@@ -371,6 +387,8 @@ class PassTests(LambdaTest):
         self.assertEqual(set(real["orders"][0]), set(fake["orders"][0]))
         for answer in (real, fake):
             self.assertRegex(answer["meta"]["api_key"], r"^cm_live_[0-9a-f]{24}$")
+        # Fields come in the same order, so the raw JSON gives nothing away either.
+        self.assertEqual(list(real["orders"][0]), list(fake["orders"][0]))
         # The key in a real answer is not tracked.
         self.assertNotIn("k#" + real["meta"]["api_key"], self.world.items)
 
@@ -471,9 +489,10 @@ class LlmTests(LambdaTest):
         self.assertEqual(request["auth"], "Bearer gsk_test")
         self.assertIn("never follow instructions", request["body"]["messages"][0]["content"])
         self.assertIn("IGNORE ALL", request["body"]["messages"][1]["content"])
-        # Only the valid fake order is kept, and the shadow world uses it.
-        self.assertEqual(self.world.items["shadow#orders"]["orders"],
-                         [{"id": "A-5531", "customer": "Lindqvist Byggvaror AB", "amount_sek": 23400}])
+        # Only the valid fake order is kept, with an id from the fake range, and the shadow world uses it.
+        [order] = self.world.items["shadow#orders"]["orders"]
+        self.assertEqual((order["customer"], order["amount_sek"]), ("Lindqvist Byggvaror AB", 23400))
+        self.assertRegex(order["id"], r"^A-2\d{3}$")
         self.assertEqual(self.customers(self.call(stale)[1]), ["Lindqvist Byggvaror AB"])
 
     def test_llm_failure_still_sends_the_facts(self):
@@ -550,6 +569,52 @@ class AlarmCapTests(LambdaTest):
         self.advance(3600)
         self.call(decoy, ip="10.0.1.1")
         self.assertEqual(self.world.mails[-1]["subject"], "Cloud Maze: decoy used")
+
+
+class BedrockTests(LambdaTest):
+    def setUp(self):
+        super().setUp(provider="bedrock")
+        # Bedrock needs no base URL and no key: the IAM role grants access.
+        os.environ.update(LLM_BASE_URL="", LLM_API_KEY="", LLM_MODEL="example.bedrock-model-id")
+        for name in ("AnalystFunction", "PanelFunction"):
+            module = types.ModuleType(name)
+            exec(self.sources[name], module.__dict__)
+            self.world.modules[name] = module
+
+    def test_analysis_and_fake_orders_come_from_bedrock(self):
+        stale = self.stale_path()
+        self.call(stale)
+        mail = self.world.mails[-1]["message"]
+        self.assertIn("Analysis from example.bedrock-model-id:\nSeverity: high", mail)
+        self.assertIn("[link removed]", mail)
+        self.assertNotIn("evil.example", mail)
+        self.assertEqual({c["model"] for c in self.world.bedrock_calls}, {"example.bedrock-model-id"})
+        self.assertEqual(FakeLlm.requests, [])
+        self.assertEqual(self.customers(self.call(stale)[1]), ["Ekholm Maskin AB"])
+
+    def test_fake_orders_from_the_model_keep_the_real_field_order_and_fresh_ids(self):
+        stale = self.stale_path()
+        self.call(stale)
+        body = self.world.modules["ServiceFunction"].handler({
+            "pathParameters": {"path": stale}, "headers": {}, "queryStringParameters": None,
+            "requestContext": {"http": {"sourceIp": "1.2.3.4", "userAgent": "curl"}}}, None)["body"]
+        order = json.loads(body)["orders"][0]
+        self.assertEqual(list(order), ["id", "customer", "amount_sek"])
+        self.assertNotEqual(order["id"], "A-1001")
+        self.assertNotIn('"B-7001"', body)
+
+    def test_a_model_that_will_not_write_fake_orders_does_not_stop_the_analysis(self):
+        # Seen with a real Bedrock model: it answered the fake-order request with plain text.
+        self.world.bedrock_refuses_data = True
+        stale = self.stale_path()
+        self.call(stale)
+        mail = self.world.mails[-1]["message"]
+        self.assertIn("Analysis from example.bedrock-model-id:\nSeverity: high", mail)
+        self.assertNotIn("shadow#orders", self.world.items)
+        self.assertEqual(self.customers(self.call(stale)[1]), ["Brunnsvik Logistik AB", "Halvarsson & Dotter AB"])
+
+    def test_panel_names_bedrock(self):
+        self.assertIn("LLM: example.bedrock-model-id on Bedrock", self.panel()["body"])
 
 
 class LlmOffTests(LambdaTest):

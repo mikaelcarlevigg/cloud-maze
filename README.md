@@ -42,7 +42,7 @@ The AWS version shuts itself down after two hours and costs practically nothing 
 - **Old paths become tripwires.** Authorized clients never use them, so a hit is a strong signal. The alarm says when the path existed, which is when the information leaked.
 - **Attackers land in a shadow world.** Every path they call works, the real one included, but the data is fake. Everyone else still gets the real service.
 - **Marked keys follow them.** The fake data includes a fake API key made for that attacker. It is recognized within seconds from any IP address.
-- **Bring your own LLM.** Any OpenAI-compatible API, such as Groq, can assess alarms and write the fake data. The maze itself runs on rules, so tricking the model can at most change some text in an e-mail.
+- **Bring your own LLM.** Amazon Bedrock in your own account, with no key, or any OpenAI-compatible API, such as Groq, can assess alarms and write the fake data. The maze itself runs on rules, so tricking the model can at most change some text in an e-mail.
 
 **Status:** a prototype, tested end to end in a real AWS account. It is a layer on top of ordinary security, not a replacement for it. MIT licensed.
 
@@ -50,7 +50,7 @@ The AWS version shuts itself down after two hours and costs practically nothing 
 > **Before you use it for anything real.** Two things are left as they are on purpose, to keep the prototype free of fixed monthly costs:
 >
 > - **The rate limit is shared by everyone.** The API allows 2 requests per second in total, which protects your bill but lets an attacker crowd out authorized clients. For real use, put AWS WAF with per-source rate limits in front of the API.
-> - **The LLM key is stored as an environment variable** on a Lambda function, readable by anyone who can view its configuration. For real use, keep it in AWS Secrets Manager or Parameter Store.
+> - **An external LLM's key is stored as an environment variable** on a Lambda function, readable by anyone who can view its configuration. For real use, choose Amazon Bedrock, which needs no key, or keep the key in AWS Secrets Manager or Parameter Store.
 >
 > The full [security review](aws/README.md#security-review) lists everything that was found and fixed, and what remains.
 

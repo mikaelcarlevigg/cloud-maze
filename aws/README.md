@@ -24,7 +24,7 @@ Want to see how it works first? [Play the attacker in the browser simulator](htt
 > **A prototype, not production.** Two limits are left in place on purpose, because fixing them adds a fixed monthly cost:
 >
 > - **The rate limit is shared by everyone.** 2 requests per second for the whole API protects your bill, but an attacker can use it up so that authorized clients get errors. For real use: AWS WAF with per-source rate limits, behind CloudFront.
-> - **The LLM key is an environment variable** on the `analyst` function. For real use: AWS Secrets Manager or Parameter Store.
+> - **An external LLM's key is an environment variable** on the `analyst` function. For real use: choose Amazon Bedrock, which needs no key, or keep the key in AWS Secrets Manager or Parameter Store.
 >
 > See the [security review](#security-review) for everything else.
 
@@ -153,7 +153,24 @@ Cloud Maze works without an LLM. If you connect one, it does two things:
 1. **Assesses the alarm.** The alarm e-mail gets a short analysis: what happened, how serious it is and what you should do.
 2. **Writes the shadow world.** It creates convincing fake orders that attackers in the shadow world get to see.
 
-You can use any provider with an OpenAI-compatible API, which most have. You fill in three fields when you create the stack:
+There are two ways to connect one: **Amazon Bedrock** in your own AWS account, which needs no API key, or **any provider with an OpenAI-compatible API**, such as Groq.
+
+### Option 1: Amazon Bedrock (no key)
+
+The model runs in your own AWS account, and the `analyst` function gets access through its IAM role. There is no key to copy, store or leak.
+
+1. Open **Amazon Bedrock** in the AWS console, in the region where you install the stack.
+2. Go to the **model catalog**, pick a model, for example one of the Claude models, and try it once in the **playground**. Some providers ask you to describe your use case the first time; the playground takes you through it.
+3. Copy the model's ID. In some regions models are only offered through a cross-region **inference profile**, whose ID starts with a region prefix such as `eu.`; then copy that ID instead.
+4. When you create the stack, set **LlmProvider** to `bedrock` and paste the ID into **LlmModel**. Leave **LlmBaseUrl** and **LlmApiKey** empty.
+
+With `deploy.sh` in CloudShell: `LLM_PROVIDER=bedrock LLM_MODEL=<the ID> ./deploy.sh you@example.com`.
+
+Bedrock bills per call, at the model's price in your account. The cap of 20 LLM calls per hour applies here too. The panel shows the model with "on Bedrock" after it.
+
+### Option 2: any OpenAI-compatible API
+
+Most providers have an OpenAI-compatible API. Keep **LlmProvider** at `openai-compatible` and fill in three fields when you create the stack:
 
 | Field | Groq | Other provider |
 | --- | --- | --- |
@@ -184,7 +201,8 @@ Also check that the model name is in Groq's model list, since the selection chan
 - **The fake orders are checked.** Only fields with the right type and reasonable values are kept. Everything else is discarded.
 - **A cap on calls.** At most 20 LLM calls per hour (`LlmMaxCallsPerHour`). The LLM is only called when a new source hits a tripwire, not on every request.
 - **If the LLM does not answer**, the e-mail goes out anyway, with a line about the error.
-- **The key** is hidden in the CloudFormation form but stored as an environment variable on the `analyst` function. Anyone with administrator access to your account can see it. In production the key belongs in AWS Secrets Manager. That costs a small amount every month, which is why it is not the default here.
+- **The key** for an external provider is hidden in the CloudFormation form but stored as an environment variable on the `analyst` function. Anyone with administrator access to your account can see it. With Amazon Bedrock there is no key at all. Otherwise, in production the key belongs in AWS Secrets Manager, which costs a small amount every month and is therefore not the default here.
+- **The Bedrock permission** is only added to the `analyst` function's role when **LlmProvider** is `bedrock`.
 
 ## Your own credentials
 
@@ -249,7 +267,7 @@ This section lists what an attacker could exploit in this prototype, found by re
 - **The deception can still be spotted by a careful attacker.** Someone who saw the real orders before the path closed will notice that the customers change.
 - **A stolen pass works until its path closes.** Whoever steals a full request, pass included, can use it for up to two intervals. After that it is a tripwire like the path.
 - **The panel address is still a key.** Anyone with it can see the current path and its pass. Do not share it or show it in screenshots.
-- **The LLM key is stored as an environment variable** on the `analyst` function, visible to anyone who can read the function's configuration in your account.
+- **An external LLM's key is stored as an environment variable** on the `analyst` function, visible to anyone who can read the function's configuration in your account. Amazon Bedrock avoids this, since it needs no key.
 
 ## Differences from the concept
 
