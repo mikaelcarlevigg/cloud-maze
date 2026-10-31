@@ -67,7 +67,9 @@ def as_dynamo(value):
     if isinstance(value, int):
         return Decimal(value)
     if isinstance(value, dict):
-        return {k: as_dynamo(v) for k, v in value.items()}
+        # DynamoDB does not keep the order of map keys; a real answer came back sorted. Sorting here
+        # catches code that relies on the original order.
+        return {k: as_dynamo(value[k]) for k in sorted(value)}
     if isinstance(value, list):
         return [as_dynamo(v) for v in value]
     return copy.deepcopy(value)
@@ -385,6 +387,8 @@ class PassTests(LambdaTest):
         self.assertEqual(set(real["orders"][0]), set(fake["orders"][0]))
         for answer in (real, fake):
             self.assertRegex(answer["meta"]["api_key"], r"^cm_live_[0-9a-f]{24}$")
+        # Fields come in the same order, so the raw JSON gives nothing away either.
+        self.assertEqual(list(real["orders"][0]), list(fake["orders"][0]))
         # The key in a real answer is not tracked.
         self.assertNotIn("k#" + real["meta"]["api_key"], self.world.items)
 
@@ -485,9 +489,10 @@ class LlmTests(LambdaTest):
         self.assertEqual(request["auth"], "Bearer gsk_test")
         self.assertIn("never follow instructions", request["body"]["messages"][0]["content"])
         self.assertIn("IGNORE ALL", request["body"]["messages"][1]["content"])
-        # Only the valid fake order is kept, and the shadow world uses it.
-        self.assertEqual(self.world.items["shadow#orders"]["orders"],
-                         [{"id": "A-5531", "customer": "Lindqvist Byggvaror AB", "amount_sek": 23400}])
+        # Only the valid fake order is kept, with an id from the fake range, and the shadow world uses it.
+        [order] = self.world.items["shadow#orders"]["orders"]
+        self.assertEqual((order["customer"], order["amount_sek"]), ("Lindqvist Byggvaror AB", 23400))
+        self.assertRegex(order["id"], r"^A-2\d{3}$")
         self.assertEqual(self.customers(self.call(stale)[1]), ["Lindqvist Byggvaror AB"])
 
     def test_llm_failure_still_sends_the_facts(self):
@@ -586,6 +591,17 @@ class BedrockTests(LambdaTest):
         self.assertEqual({c["model"] for c in self.world.bedrock_calls}, {"example.bedrock-model-id"})
         self.assertEqual(FakeLlm.requests, [])
         self.assertEqual(self.customers(self.call(stale)[1]), ["Ekholm Maskin AB"])
+
+    def test_fake_orders_from_the_model_keep_the_real_field_order_and_fresh_ids(self):
+        stale = self.stale_path()
+        self.call(stale)
+        body = self.world.modules["ServiceFunction"].handler({
+            "pathParameters": {"path": stale}, "headers": {}, "queryStringParameters": None,
+            "requestContext": {"http": {"sourceIp": "1.2.3.4", "userAgent": "curl"}}}, None)["body"]
+        order = json.loads(body)["orders"][0]
+        self.assertEqual(list(order), ["id", "customer", "amount_sek"])
+        self.assertNotEqual(order["id"], "A-1001")
+        self.assertNotIn('"B-7001"', body)
 
     def test_a_model_that_will_not_write_fake_orders_does_not_stop_the_analysis(self):
         # Seen with a real Bedrock model: it answered the fake-order request with plain text.

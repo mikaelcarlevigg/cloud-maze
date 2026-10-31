@@ -316,6 +316,9 @@ Resources:
                       "body": json.dumps(body, default=int)}
 
           def orders_answer(orders, key):
+              # The database does not keep field order, so every order is rebuilt in one fixed order.
+              orders = [{"id": o["id"], "customer": o["customer"], "amount_sek": int(o["amount_sek"])}
+                        for o in orders]
               return answer(200, {"orders": orders, "meta": {
                   "api_key": key, "scope": "orders:write",
                   "hint": "Send it as X-Api-Key to create or change orders."}})
@@ -468,7 +471,7 @@ Resources:
           SHADOW_MINUTES: !Sub "${ShadowMinutes}"
       Code:
         ZipFile: |
-          import json, os, re, time, urllib.request, boto3
+          import json, os, re, secrets, time, urllib.request, boto3
           from datetime import datetime, timezone
 
           table = boto3.resource("dynamodb").Table(os.environ["TABLE"])
@@ -547,11 +550,14 @@ Resources:
               if start < 0 or end < start:
                   print(json.dumps({"fake_orders_skipped": text[:300]}))
                   return
-              orders = [{"id": o["id"][:20], "customer": o["customer"][:60], "amount_sek": o["amount_sek"]}
-                        for o in json.loads(text[start:end + 1])[:8]
-                        if isinstance(o, dict) and isinstance(o.get("id"), str)
-                        and isinstance(o.get("customer"), str) and type(o.get("amount_sek")) is int
-                        and 100 <= o["amount_sek"] <= 10**6]
+              # The ids are set here, in a range real orders do not use, so a fake order can never
+              # reuse the id of a real one an attacker may have seen.
+              orders = [{"id": f"A-{2000 + n * 37 + secrets.randbelow(30)}", "customer": o["customer"][:60],
+                         "amount_sek": o["amount_sek"]}
+                        for n, o in enumerate(o for o in json.loads(text[start:end + 1])[:8]
+                                              if isinstance(o, dict) and isinstance(o.get("customer"), str)
+                                              and type(o.get("amount_sek")) is int
+                                              and 100 <= o["amount_sek"] <= 10**6)]
               if orders:
                   table.put_item(Item={"pk": "shadow#orders", "orders": orders})
 
