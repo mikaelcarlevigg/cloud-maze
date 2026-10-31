@@ -1,35 +1,37 @@
 <!doctype html>
-<!-- Source of docs/images/linkedin.png. Render at 1200 x 1200, for example with a headless browser screenshot. -->
+<!-- Source of docs/images/linkedin.png. Render at 1200 x 1200, for example with a headless browser screenshot.
+     The alarm text is a real analysis from Amazon Nova 2 Lite on Bedrock, with the IP address replaced by a documentation address. -->
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap">
 <style>
-  :root { --bg:#0f1520; --panel:#182131; --ink:#e8edf5; --muted:#98a4b8; --accent:#7fa2ff; --alarm:#ff9d5c; --ok:#5fd39a; }
+  :root { --bg:#0f1520; --panel:#182131; --line:#2a3548; --ink:#e8edf5; --muted:#98a4b8; --accent:#7fa2ff; --alarm:#ff9d5c; --ok:#5fd39a; --aws:#ff9900; }
   * { box-sizing: border-box; }
-  body { margin:0; width:1200px; height:1200px; background: radial-gradient(1200px 900px at 85% 20%, #1b2a48 0%, var(--bg) 60%); color:var(--ink);
+  body { margin:0; width:1200px; height:1200px; background: radial-gradient(1200px 900px at 85% 15%, #1b2a48 0%, var(--bg) 60%); color:var(--ink);
          font-family:"IBM Plex Sans", system-ui, sans-serif; overflow:hidden; position:relative; }
-  .grid { position:absolute; inset:0; background-image: linear-gradient(rgba(127,162,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(127,162,255,.06) 1px, transparent 1px);
-          background-size: 48px 48px; }
-  .text { position:absolute; left:72px; top:88px; width:520px; }
-  .eyebrow { font:600 22px "IBM Plex Mono", monospace; color:var(--accent); letter-spacing:.06em; text-transform:uppercase; }
-  h1 { font-size:78px; line-height:1; margin:20px 0 24px; font-weight:700; letter-spacing:-.02em; }
-  .lede { font-size:31px; line-height:1.3; color:var(--ink); margin:0 0 48px; }
+  .grid { position:absolute; inset:0; background-image: linear-gradient(rgba(127,162,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(127,162,255,.06) 1px, transparent 1px); background-size: 48px 48px; }
+  .text { position:absolute; left:72px; top:80px; width:520px; }
+  .eyebrow { font:600 20px "IBM Plex Mono", monospace; color:var(--accent); letter-spacing:.06em; text-transform:uppercase; }
+  h1 { font-size:78px; line-height:1; margin:18px 0 22px; font-weight:700; letter-spacing:-.02em; }
+  .lede { font-size:31px; line-height:1.3; margin:0 0 40px; }
   .lede em { font-style:normal; color:var(--alarm); }
-  ul { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:22px; }
-  li { font-size:25px; line-height:1.3; color:var(--muted); padding-left:40px; position:relative; }
+  ul { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:20px; }
+  li { font-size:24px; line-height:1.3; color:var(--muted); padding-left:38px; position:relative; }
   li b { color:var(--ink); font-weight:600; }
-  li::before { content:""; position:absolute; left:0; top:12px; width:16px; height:16px; border-radius:4px; background:var(--accent); }
-  li.alarm::before { background:var(--alarm); }
-  li.ok::before { background:var(--ok); }
+  li::before { content:""; position:absolute; left:0; top:10px; width:15px; height:15px; border-radius:4px; background:var(--accent); }
+  li.alarm::before { background:var(--alarm); } li.ok::before { background:var(--ok); } li.aws::before { background:var(--aws); }
   .path { position:absolute; left:72px; bottom:140px; font:500 24px "IBM Plex Mono", monospace; color:var(--muted); }
   .path s { color:#5d6a80; } .path span { color:var(--accent); }
   .foot { position:absolute; left:72px; bottom:80px; font:500 21px "IBM Plex Mono", monospace; color:var(--muted); }
-  .phone { position:absolute; width:300px; border-radius:36px; overflow:hidden; border:10px solid #2a3548; box-shadow: 0 40px 80px rgba(0,0,0,.55); background:#fff; }
+  .phone { position:absolute; left:760px; top:90px; width:300px; height:700px; border-radius:36px; overflow:hidden; border:10px solid var(--line);
+           box-shadow:0 40px 80px rgba(0,0,0,.55); background:#fff; transform: rotate(4deg); }
   .phone img { display:block; width:100%; }
-  .p1 { left:610px; top:120px; height:760px; transform: rotate(-4deg); }
-  .p2 { left:860px; top:250px; height:760px; transform: rotate(5deg); }
-  .tag { position:absolute; font:600 20px "IBM Plex Sans"; padding:10px 18px; border-radius:999px; }
-  .t1 { left:640px; top:910px; background:var(--panel); color:var(--ink); border:1px solid #2a3548; }
-  .t2 { left:890px; top:1040px; background:var(--panel); color:var(--ink); border:1px solid #2a3548; }
+  .alarm-card { position:absolute; left:610px; top:620px; width:520px; background:var(--panel); border:1px solid var(--line); border-left:5px solid var(--alarm);
+                border-radius:14px; padding:22px 26px; box-shadow:0 30px 70px rgba(0,0,0,.6); transform: rotate(-2deg); }
+  .alarm-card .subject { font:700 22px "IBM Plex Sans"; margin-bottom:12px; }
+  .alarm-card .facts { font:500 15px/1.55 "IBM Plex Mono", monospace; color:var(--muted); }
+  .alarm-card .facts b { color:var(--ink); font-weight:600; }
+  .alarm-card .analysis { margin-top:14px; padding-top:14px; border-top:1px solid var(--line); font-size:17px; line-height:1.45; color:var(--ink); }
+  .alarm-card .by { font:600 14px "IBM Plex Mono", monospace; color:var(--aws); margin-bottom:6px; letter-spacing:.02em; }
 </style></head>
 <body>
   <div class="grid"></div>
@@ -41,12 +43,22 @@
       <li><b>Old paths become tripwires</b> that show when they leaked</li>
       <li class="alarm"><b>Attackers land in a shadow world</b> of fake data</li>
       <li class="ok"><b>Marked keys follow them</b> to any IP address</li>
+      <li class="aws"><b>Amazon Bedrock assesses every alarm,</b> with no API key</li>
     </ul>
   </div>
   <div class="path"><s>/v1/k7f2q9/orders</s> → <span>/v1/m3x8a1/orders</span></div>
   <div class="foot">github.com/mikaelcarlevigg/cloud-maze</div>
-  <div class="phone p1"><img src="../images/simulator.png" alt=""></div>
-  <div class="phone p2"><img src="../images/panel.png" alt=""></div>
-  <div class="tag t1">Browser simulator</div>
-  <div class="tag t2">AWS control panel</div>
+  <div class="phone"><img src="../images/panel.png" alt=""></div>
+  <div class="alarm-card">
+    <div class="subject">Cloud Maze: decoy used</div>
+    <div class="facts">
+      From: <b>203.0.113.7</b><br>
+      This path was never on any map: it is a planted decoy.<br>
+      Handed the marked key <b>cm_live_f96a2b0f…</b>
+    </div>
+    <div class="analysis">
+      <div class="by">ANALYSIS · AMAZON NOVA 2 LITE ON BEDROCK</div>
+      A decoy tripwire was triggered, indicating potential reconnaissance or probing. Severity is medium: the source is external and unauthorized, suggesting possible malicious intent.
+    </div>
+  </div>
 </body></html>
