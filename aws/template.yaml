@@ -537,11 +537,18 @@ Resources:
                          json.dumps(report))
 
           def make_fake_orders():
-              text = llm("You write decoy data for a honeypot. Output only a JSON array.",
-                         'Write 5 realistic, invented Swedish B2B orders as '
-                         '[{"id": "A-1234", "customer": "Company AB", "amount_sek": 12345}].')
+              # Optional extra: if the model answers in another form, the built-in fake orders stay.
+              text = llm("You write realistic sample data for a demo environment. Answer with a JSON "
+                         "array only, no other text.",
+                         'Write 5 invented Swedish business orders as '
+                         '[{"id": "A-1234", "customer": "Company AB", "amount_sek": 12345}]. '
+                         "Use made-up company names.")
+              start, end = text.find("["), text.rfind("]")
+              if start < 0 or end < start:
+                  print(json.dumps({"fake_orders_skipped": text[:300]}))
+                  return
               orders = [{"id": o["id"][:20], "customer": o["customer"][:60], "amount_sek": o["amount_sek"]}
-                        for o in json.loads(text[text.index("["):text.rindex("]") + 1])[:8]
+                        for o in json.loads(text[start:end + 1])[:8]
                         if isinstance(o, dict) and isinstance(o.get("id"), str)
                         and isinstance(o.get("customer"), str) and type(o.get("amount_sek")) is int
                         and 100 <= o["amount_sek"] <= 10**6]
@@ -587,9 +594,13 @@ Resources:
               if not LLM_ON:
                   lines.append("\nLLM: off.")
               else:
+                  # The fake orders and the analysis fail separately: one must not stop the other.
                   try:
                       if not table.get_item(Key={"pk": "shadow#orders"}).get("Item") and llm_allowed():
                           make_fake_orders()
+                  except Exception as error:
+                      print(json.dumps({"fake_orders_failed": f"{type(error).__name__}: {error}"[:300]}))
+                  try:
                       text = analysis(report) if llm_allowed() else "Skipped: hourly limit reached."
                   except Exception as error:
                       text = f"Failed: {type(error).__name__}: {error}"[:300]

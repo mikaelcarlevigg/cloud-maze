@@ -161,6 +161,7 @@ class World:
     def __init__(self):
         self.items, self.mails, self.clock, self.modules = {}, [], [1_000_000], {}
         self.bedrock_calls = []
+        self.bedrock_refuses_data = False
 
     def boto3(self):
         world = self
@@ -178,7 +179,9 @@ class World:
                 # Answers in the shape of Amazon Bedrock's Converse API.
                 world.bedrock_calls.append({"model": modelId, "system": system[0]["text"],
                                             "user": messages[0]["content"][0]["text"]})
-                if "decoy data" in system[0]["text"]:
+                if "sample data" in system[0]["text"] and world.bedrock_refuses_data:
+                    text = "I can't help create fake records."
+                elif "sample data" in system[0]["text"]:
                     text = '[{"id": "B-7001", "customer": "Ekholm Maskin AB", "amount_sek": 56100}]'
                 else:
                     text = "Severity: high. A marked key moved. See https://evil.example now."
@@ -226,7 +229,7 @@ class FakeLlm(BaseHTTPRequestHandler):
             return
         content = ('Here you go: [{"id": "A-5531", "customer": "Lindqvist Byggvaror AB", "amount_sek": 23400},'
                    ' {"id": "A-5532", "customer": "Bad", "amount_sek": "lots"}]'
-                   if "decoy data" in system else "Severity: medium. An old path was used.")
+                   if "sample data" in system else "Severity: medium. An old path was used.")
         data = json.dumps({"choices": [{"message": {"content": content}}]}).encode()
         self.send_response(200)
         self.end_headers()
@@ -583,6 +586,16 @@ class BedrockTests(LambdaTest):
         self.assertEqual({c["model"] for c in self.world.bedrock_calls}, {"example.bedrock-model-id"})
         self.assertEqual(FakeLlm.requests, [])
         self.assertEqual(self.customers(self.call(stale)[1]), ["Ekholm Maskin AB"])
+
+    def test_a_model_that_will_not_write_fake_orders_does_not_stop_the_analysis(self):
+        # Seen with a real Bedrock model: it answered the fake-order request with plain text.
+        self.world.bedrock_refuses_data = True
+        stale = self.stale_path()
+        self.call(stale)
+        mail = self.world.mails[-1]["message"]
+        self.assertIn("Analysis from example.bedrock-model-id:\nSeverity: high", mail)
+        self.assertNotIn("shadow#orders", self.world.items)
+        self.assertEqual(self.customers(self.call(stale)[1]), ["Brunnsvik Logistik AB", "Halvarsson & Dotter AB"])
 
     def test_panel_names_bedrock(self):
         self.assertIn("LLM: example.bedrock-model-id on Bedrock", self.panel()["body"])
